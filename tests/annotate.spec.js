@@ -451,6 +451,42 @@ test.describe('Export / Import', () => {
     expect(download.suggestedFilename()).toMatch(/^annotate-.*\.json$/);
   });
 
+  test('copy button copies the complete export JSON', async ({ page }) => {
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async text => { window.__copiedComments = text; } },
+      });
+    });
+
+    const button = page.locator('#__an_foot button', { hasText: 'Copy' });
+    await expect(button).toHaveAttribute('title', 'Copy comments as JSON');
+    await expect(button).toHaveAttribute('aria-label', 'Copy comments as JSON');
+    await button.click();
+
+    const copied = await page.evaluate(() => ({
+      payload: JSON.parse(window.__copiedComments),
+      comments: window.Annotate.comments(),
+      version: window.Annotate.version,
+      project: window.Annotate.config.project,
+      url: location.href,
+    }));
+    expect(copied.payload).toMatchObject({
+      annotate: copied.version,
+      kind: 'annotate-export',
+      page: copied.comments[0].page,
+      url: copied.url,
+      project: copied.project,
+      comments: copied.comments,
+    });
+    expect(copied.payload.exportedViewport).toEqual(expect.objectContaining({
+      vw: expect.any(Number),
+      vh: expect.any(Number),
+      dpr: expect.any(Number),
+    }));
+    expect(Date.parse(copied.payload.exportedAt)).not.toBeNaN();
+  });
+
   test('import JSON file merges comments', async ({ page }) => {
     const comments = await page.evaluate(() => window.Annotate.comments());
     expect(comments.length).toBe(1);

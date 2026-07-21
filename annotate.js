@@ -718,6 +718,8 @@
     #__an_colorbtn { width:36px; height:36px; }
     #__an_panel .an-list { -webkit-overflow-scrolling: touch; }
     .an-ph { padding:14px 14px 10px; }
+    #__an_foot .an-footrow { flex-wrap:wrap; }
+    #__an_foot .an-fbtn { flex-basis:calc(50% - 4px); }
   }
 
   @media (hover: none) and (pointer: coarse) {
@@ -1892,13 +1894,10 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
-  function exportComments() {
+  function buildExportPayload() {
     var comments = state.comments.slice();
-    if (!comments.length) {
-      toast("No comments on this page to export", { kind: "info" });
-      return;
-    }
-    var payload = {
+    if (!comments.length) return null;
+    return {
       annotate: VERSION,
       kind: "annotate-export",
       exportedAt: new Date().toISOString(),
@@ -1908,10 +1907,28 @@
       exportedViewport: { vw: window.innerWidth, vh: window.innerHeight, dpr: window.devicePixelRatio || 1 },
       comments: comments,
     };
+  }
+
+  function exportComments() {
+    var payload = buildExportPayload();
+    if (!payload) {
+      toast("No comments on this page to export", { kind: "info" });
+      return;
+    }
+    var comments = payload.comments;
     var slug = (PAGE || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
     var stamp = new Date().toISOString().slice(0, 10);
     downloadJSON(payload, "annotate-" + slug + "-" + stamp + ".json");
     toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s"), { kind: "success" });
+  }
+
+  function copyComments() {
+    var payload = buildExportPayload();
+    if (!payload) {
+      toast("No comments on this page to copy", { kind: "info" });
+      return;
+    }
+    copyText(JSON.stringify(payload, null, 2), "Comments copied as JSON");
   }
 
   function pickImportFile() {
@@ -2036,6 +2053,7 @@
     ]));
     footEl.appendChild(el("div", { class: "an-footrow" }, [
       el("button", { class: "an-fbtn" + (n ? " an-pulse" : ""), title: "Download comments as JSON", html: ICONS.download + "<span>Download</span>", onclick: exportComments }),
+      el("button", { class: "an-fbtn", title: "Copy comments as JSON", "aria-label": "Copy comments as JSON", html: ICONS.copy + "<span>Copy</span>", onclick: copyComments }),
       canShare ? el("button", { class: "an-fbtn", title: "Send comments to " + state.share, html: ICONS.share + "<span>Share</span>", onclick: shareComments }) : null,
       el("button", { class: "an-fbtn", html: ICONS.upload + "<span>Import</span>", onclick: pickImportFile }),
     ]));
