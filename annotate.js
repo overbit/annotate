@@ -504,10 +504,12 @@
     font-size:11.5px; color: var(--an-muted); }
   #__an_foot .an-localnote svg { width:14px; height:14px; flex:none; }
   #__an_foot .an-footrow { display:flex; gap:8px; }
+  #__an_foot .an-footrow.an-four { flex-wrap:wrap; }
   #__an_foot .an-fbtn { flex:1; border:1px solid var(--an-border-strong);
     background: var(--an-surface); color: var(--an-fg); border-radius:10px; padding:9px;
     font:600 12.5px var(--an-font); cursor:pointer; display:flex; align-items:center;
     justify-content:center; gap:7px; transition: background .15s, border-color .15s; }
+  #__an_foot .an-footrow.an-four .an-fbtn { flex-basis:calc(50% - 4px); }
   #__an_foot .an-fbtn:hover { background: var(--an-surface-2); border-color: var(--an-btn-bg); }
   #__an_foot .an-fbtn svg { width:15px; height:15px; }
 
@@ -2051,7 +2053,7 @@
         ? "Saved in this browser. Download or share to send your comments."
         : "Saved in this browser. Download to send your comments." }),
     ]));
-    footEl.appendChild(el("div", { class: "an-footrow" }, [
+    footEl.appendChild(el("div", { class: "an-footrow" + (canShare ? " an-four" : "") }, [
       el("button", { class: "an-fbtn" + (n ? " an-pulse" : ""), title: "Download comments as JSON", html: ICONS.download + "<span>Download</span>", onclick: exportComments }),
       el("button", { class: "an-fbtn", title: "Copy comments as JSON", "aria-label": "Copy comments as JSON", html: ICONS.copy + "<span>Copy</span>", onclick: copyComments }),
       canShare ? el("button", { class: "an-fbtn", title: "Send comments to " + state.share, html: ICONS.share + "<span>Share</span>", onclick: shareComments }) : null,

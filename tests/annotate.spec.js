@@ -915,6 +915,40 @@ test.describe('Startup bubble & author config', () => {
     await expect(footRow.locator('button:has-text("Download")')).toHaveClass(/an-pulse/);
   });
 
+  test('share-enabled desktop footer keeps every control inside the row', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => window.Annotate.open());
+
+    const footRow = page.locator('#__an_foot .an-footrow');
+    await expect(footRow).toBeVisible();
+    const layout = await footRow.evaluate(row => {
+      const rowBounds = row.getBoundingClientRect();
+      return {
+        left: rowBounds.left,
+        right: rowBounds.right,
+        controls: Array.from(row.querySelectorAll('button')).map(button => {
+          const bounds = button.getBoundingClientRect();
+          return {
+            label: button.textContent.trim(),
+            left: bounds.left,
+            right: bounds.right,
+          };
+        }),
+      };
+    });
+
+    expect(layout.controls.map(control => control.label)).toEqual([
+      'Download',
+      'Copy',
+      'Share',
+      'Import',
+    ]);
+    for (const control of layout.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(layout.left - 0.5);
+      expect(control.right).toBeLessThanOrEqual(layout.right + 0.5);
+    }
+  });
+
   test('Share button opens a guided dialog instead of firing mailto blindly', async ({ page }) => {
     await setName(page, 'Reviewer A');
     // add a comment so there is something to share
