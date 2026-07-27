@@ -451,6 +451,42 @@ test.describe('Export / Import', () => {
     expect(download.suggestedFilename()).toMatch(/^annotate-.*\.json$/);
   });
 
+  test('copy button copies the complete export JSON', async ({ page }) => {
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async text => { window.__copiedComments = text; } },
+      });
+    });
+
+    const button = page.locator('#__an_foot button', { hasText: 'Copy' });
+    await expect(button).toHaveAttribute('title', 'Copy comments as JSON');
+    await expect(button).toHaveAttribute('aria-label', 'Copy comments as JSON');
+    await button.click();
+
+    const copied = await page.evaluate(() => ({
+      payload: JSON.parse(window.__copiedComments),
+      comments: window.Annotate.comments(),
+      version: window.Annotate.version,
+      project: window.Annotate.config.project,
+      url: location.href,
+    }));
+    expect(copied.payload).toMatchObject({
+      annotate: copied.version,
+      kind: 'annotate-export',
+      page: copied.comments[0].page,
+      url: copied.url,
+      project: copied.project,
+      comments: copied.comments,
+    });
+    expect(copied.payload.exportedViewport).toEqual(expect.objectContaining({
+      vw: expect.any(Number),
+      vh: expect.any(Number),
+      dpr: expect.any(Number),
+    }));
+    expect(Date.parse(copied.payload.exportedAt)).not.toBeNaN();
+  });
+
   test('import JSON file merges comments', async ({ page }) => {
     const comments = await page.evaluate(() => window.Annotate.comments());
     expect(comments.length).toBe(1);
@@ -877,6 +913,40 @@ test.describe('Startup bubble & author config', () => {
     await expect(footRow.locator('button:has-text("Share")')).toBeVisible();
     // Download button pulses to cue sharing
     await expect(footRow.locator('button:has-text("Download")')).toHaveClass(/an-pulse/);
+  });
+
+  test('share-enabled desktop footer keeps every control inside the row', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => window.Annotate.open());
+
+    const footRow = page.locator('#__an_foot .an-footrow');
+    await expect(footRow).toBeVisible();
+    const layout = await footRow.evaluate(row => {
+      const rowBounds = row.getBoundingClientRect();
+      return {
+        left: rowBounds.left,
+        right: rowBounds.right,
+        controls: Array.from(row.querySelectorAll('button')).map(button => {
+          const bounds = button.getBoundingClientRect();
+          return {
+            label: button.textContent.trim(),
+            left: bounds.left,
+            right: bounds.right,
+          };
+        }),
+      };
+    });
+
+    expect(layout.controls.map(control => control.label)).toEqual([
+      'Download',
+      'Copy',
+      'Share',
+      'Import',
+    ]);
+    for (const control of layout.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(layout.left - 0.5);
+      expect(control.right).toBeLessThanOrEqual(layout.right + 0.5);
+    }
   });
 
   test('Share button opens a guided dialog instead of firing mailto blindly', async ({ page }) => {

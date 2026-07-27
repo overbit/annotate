@@ -45,7 +45,7 @@ That single line is the whole installation.
 
 Plus: threaded replies, resolve/reopen, search & filter, deep-links to a single
 comment (`#an=<id>`), an "off" mode that collapses to a small launcher, and a
-**Download / Import** round-trip for sharing.
+**Download / Copy / Import** round-trip for sharing.
 
 ---
 
@@ -281,6 +281,9 @@ Because everything is local, sharing is an explicit, privacy-friendly action:
 3. They send you that file.
 4. You open the same page, click **Import** (⬆), pick the file — every comment
    reappears anchored in place.
+
+To paste feedback directly into another tool, click **Copy** to copy the same
+complete, import-compatible JSON payload to the clipboard.
 
 You can also drive this from code (see the API below).
 
