@@ -397,7 +397,7 @@
 
       <div class="codepill mt">
         <span class="pmt">&gt;_</span>
-        <code>&lt;script src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer&gt;&lt;/script&gt;</code>
+        <code>&lt;script src="https://overbit.github.io/annotate/annotate.js" defer&gt;&lt;/script&gt;</code>
         <button class="copy" data-copy="install">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
           <span>Copy</span>
@@ -784,7 +784,7 @@
     <p>Copy one script tag, reload, and start marking up the live page. No build step, no framework, no signup.</p>
     <div class="codepill">
       <span class="pmt">&gt;_</span>
-      <code>&lt;script src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer&gt;&lt;/script&gt;</code>
+      <code>&lt;script src="https://overbit.github.io/annotate/annotate.js" defer&gt;&lt;/script&gt;</code>
       <button class="copy accent" data-copy="install">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
         <span>Copy</span>
@@ -813,7 +813,7 @@
     </div>
     <div class="col">
       <h4>Resources</h4>
-      <div class="links"><a href="https://github.com/reviewjs/annotate#readme" target="_blank" rel="noopener noreferrer">Documentation</a><a href="https://github.com/reviewjs/annotate#framework-integration" target="_blank" rel="noopener noreferrer">Framework guides</a><a href="https://reviewjs.github.io/annotate/" target="_blank" rel="noopener noreferrer">Live demo</a><a href="#faq">FAQ</a></div>
+      <div class="links"><a href="https://github.com/reviewjs/annotate#readme" target="_blank" rel="noopener noreferrer">Documentation</a><a href="https://github.com/reviewjs/annotate#framework-integration" target="_blank" rel="noopener noreferrer">Framework guides</a><a href="https://overbit.github.io/annotate/" target="_blank" rel="noopener noreferrer">Live demo</a><a href="#faq">FAQ</a></div>
     </div>
     <div class="col">
       <h4>Open source</h4>
@@ -836,7 +836,7 @@
   (function(){
     var TAG_O = '<' + 'script';
     var TAG_C = '<' + '/script>';
-    var install = TAG_O + ' src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer>' + TAG_C;
+    var install = TAG_O + ' src="https://overbit.github.io/annotate/annotate.js" defer>' + TAG_C;
 
     var snippets = {
       html: install,
@@ -850,7 +850,7 @@
         '    window.AnnotateConfig = { project: "my-app", accent: "#6d28d9" };',
         '    const s = document.createElement("script");',
         '    s.id = "annotate-js";',
-        '    s.src = "https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js";',
+        '    s.src = "https://overbit.github.io/annotate/annotate.js";',
         '    s.defer = true;',
         '    document.body.appendChild(s);',
         '  }, []);',
@@ -864,7 +864,7 @@
         '',
         'onMounted(() => {',
         '  const s = document.createElement("script");',
-        '  s.src = "https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js";',
+        '  s.src = "https://overbit.github.io/annotate/annotate.js";',
         '  s.defer = true;',
         '  document.body.appendChild(s);',
         '});',
@@ -873,7 +873,7 @@
       wordpress: [
         '<!-- Footer scripts (WPCode / Insert Headers & Footers) -->',
         TAG_O,
-        '  src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js"',
+        '  src="https://overbit.github.io/annotate/annotate.js"',
         '  data-project="my-wp-site"',
         '  defer',
         '>' + TAG_C

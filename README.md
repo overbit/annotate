@@ -67,7 +67,17 @@ That's it — reload the page and the toolbar appears in the bottom-right corner
 > unpkg works too:
 > `https://unpkg.com/@reviewjs/annotate@1.2.0/annotate.js`
 
-### 2. Self-hosted
+### 2. GitHub Pages build
+
+The forked build is published directly from this repository:
+
+```html
+<script src="https://overbit.github.io/annotate/annotate.js" defer></script>
+```
+
+Live demo: `https://overbit.github.io/annotate/`
+
+### 3. Self-hosted
 
 Download [`annotate.js`](./annotate.js), drop it next to your HTML and:
 
@@ -277,10 +287,16 @@ Paste before `</body>` (or into the platform's "custom code / footer" field):
 Because everything is local, sharing is an explicit, privacy-friendly action:
 
 1. A reviewer opens the **Comments panel** (toolbar list icon or press `A`).
-2. They click **Download** (⬇) to save a `annotate-<page>-<date>.json` file.
+2. They click **Download** (⬇), enter the name to attach to the export, and save
+   a `annotate-<page>-<date>.json` file.
 3. They send you that file.
 4. You open the same page, click **Import** (⬆), pick the file — every comment
-   reappears anchored in place.
+   reappears anchored in place with the exporter's name.
+
+This makes files from multiple reviewers safe to import into the same page
+without losing who supplied each comment. Export attribution is applied only
+to the downloaded copy; comments already stored in the reviewer's browser are
+not rewritten.
 
 To paste feedback directly into another tool, click **Copy** to copy the same
 complete, import-compatible JSON payload to the clipboard.
