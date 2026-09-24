@@ -10,7 +10,7 @@ browser (`localStorage`) and can be **downloaded to / imported from a portable
 JSON file** to share with your team.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer></script>
+<script src="https://overbit.github.io/annotate/annotate.js" defer></script>
 ```
 
 That single line is the whole installation.
@@ -56,7 +56,7 @@ comment (`#an=<id>`), an "off" mode that collapses to a small launcher, and a
 Add this just before `</body>`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer></script>
+<script src="https://overbit.github.io/annotate/annotate.js" defer></script>
 ```
 
 That's it — reload the page and the toolbar appears in the bottom-right corner.
@@ -129,7 +129,7 @@ Prefer JS config? Set `window.AnnotateConfig` **before** the script loads:
     shareEmail: "reviews@example.com",
   };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer></script>
+<script src="https://overbit.github.io/annotate/annotate.js" defer></script>
 ```
 
 ---
@@ -277,7 +277,7 @@ In `angular.json`, add to the `"scripts"` array:
 Paste before `</body>` (or into the platform's "custom code / footer" field):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@reviewjs/annotate/annotate.js" defer></script>
+<script src="https://overbit.github.io/annotate/annotate.js" defer></script>
 ```
 
 ---
