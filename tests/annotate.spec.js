@@ -441,14 +441,29 @@ test.describe('Export / Import', () => {
     await page.locator('header.hero h1').click();
     await page.locator('#__an_compose textarea').fill('Export test comment');
     await page.locator('#__an_compose .an-primary').click();
+    await page.evaluate(() => {
+      window.prompt = () => 'Export Reviewer';
+    });
   });
 
-  test('export triggers download with correct JSON structure', async ({ page }) => {
+  test('export asks for a username and attributes every exported comment', async ({ page }) => {
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.evaluate(() => window.Annotate.export()),
     ]);
     expect(download.suggestedFilename()).toMatch(/^annotate-.*\.json$/);
+
+    const stream = await download.createReadStream();
+    const chunks = [];
+    await new Promise((res, rej) => { stream.on('data', c => chunks.push(c)); stream.on('end', res); stream.on('error', rej); });
+    const json = JSON.parse(Buffer.concat(chunks).toString());
+
+    expect(json.exportedBy).toBe('Export Reviewer');
+    expect(json.comments.length).toBeGreaterThan(0);
+    expect(json.comments.every(comment => comment.author === 'Export Reviewer')).toBe(true);
+
+    const storedAuthors = await page.evaluate(() => window.Annotate.comments().map(comment => comment.author));
+    expect(storedAuthors.every(author => author !== 'Export Reviewer')).toBe(true);
   });
 
   test('copy button copies the complete export JSON', async ({ page }) => {
