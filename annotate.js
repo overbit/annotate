@@ -1896,10 +1896,14 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
-  function buildExportPayload() {
-    var comments = state.comments.slice();
+  function buildExportPayload(exporter) {
+    var comments = state.comments.map(function (c) {
+      var copy = JSON.parse(JSON.stringify(c));
+      if (exporter) copy.author = exporter;
+      return copy;
+    });
     if (!comments.length) return null;
-    return {
+    var payload = {
       annotate: VERSION,
       kind: "annotate-export",
       exportedAt: new Date().toISOString(),
@@ -1909,19 +1913,34 @@
       exportedViewport: { vw: window.innerWidth, vh: window.innerHeight, dpr: window.devicePixelRatio || 1 },
       comments: comments,
     };
+    if (exporter) payload.exportedBy = exporter;
+    return payload;
+  }
+
+  function requestExportUsername() {
+    var username = window.prompt("Name to attach to exported comments:", state.author || "");
+    if (username == null) return null;
+    username = String(username).trim();
+    if (!username) {
+      toast("Enter a name to export comments", { kind: "info" });
+      return null;
+    }
+    return username.slice(0, 100);
   }
 
   function exportComments() {
-    var payload = buildExportPayload();
-    if (!payload) {
+    if (!state.comments.length) {
       toast("No comments on this page to export", { kind: "info" });
       return;
     }
+    var username = requestExportUsername();
+    if (!username) return;
+    var payload = buildExportPayload(username);
     var comments = payload.comments;
     var slug = (PAGE || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
     var stamp = new Date().toISOString().slice(0, 10);
     downloadJSON(payload, "annotate-" + slug + "-" + stamp + ".json");
-    toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s"), { kind: "success" });
+    toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s") + " as " + username, { kind: "success" });
   }
 
   function copyComments() {
