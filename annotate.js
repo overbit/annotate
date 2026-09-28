@@ -45,9 +45,10 @@
     document.querySelector('script[src*="annotate"]');
   var scriptData = (SCRIPT && SCRIPT.dataset) || {};   // data-* attributes
   var globalConfig = window.AnnotateConfig || {};       // window.AnnotateConfig
+  var PAGE_OVERRIDE = scriptData.page || globalConfig.page || "";
   var CFG = {
     project: scriptData.project || globalConfig.project || "",
-    page: scriptData.page || globalConfig.page || location.pathname,
+    page: PAGE_OVERRIDE || location.pathname,
     accent: scriptData.accent || globalConfig.accent || "",
     theme: scriptData.theme || globalConfig.theme || "auto",
     position: scriptData.position || globalConfig.position || "bottom-right",
@@ -56,7 +57,14 @@
     note: scriptData.note || globalConfig.note || "",
     share: String(scriptData.shareEmail || globalConfig.shareEmail || "").trim(),
   };
-  var PAGE = (CFG.project ? CFG.project + ":" : "") + CFG.page;
+  function currentPagePath() {
+    var page = PAGE_OVERRIDE || location.pathname;
+    if (!PAGE_OVERRIDE) CFG.page = page;
+    return page;
+  }
+  function currentPageKey() {
+    return (CFG.project ? CFG.project + ":" : "") + currentPagePath();
+  }
 
   // localStorage can be denied (private mode, sandboxed iframes) — never crash
   var store = {
@@ -170,13 +178,14 @@
     return "c" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
   function pageComments() {
-    return dbRead().comments.filter(function (c) { return c.page === PAGE; });
+    var pageKey = currentPageKey();
+    return dbRead().comments.filter(function (c) { return c.page === pageKey; });
   }
   function createComment(draft) {
     var d = dbRead(), now = new Date().toISOString();
     var c = {
       id: uid(),
-      page: PAGE,
+      page: currentPageKey(),
       url: location.href,
       type: draft.type || "note",
       author: state.author || "Anonymous",
@@ -1907,7 +1916,7 @@
       annotate: VERSION,
       kind: "annotate-export",
       exportedAt: new Date().toISOString(),
-      page: PAGE,
+      page: currentPageKey(),
       url: location.href,
       project: CFG.project || "",
       exportedViewport: { vw: window.innerWidth, vh: window.innerHeight, dpr: window.devicePixelRatio || 1 },
@@ -1937,7 +1946,7 @@
     if (!username) return;
     var payload = buildExportPayload(username);
     var comments = payload.comments;
-    var slug = (PAGE || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
+    var slug = (currentPageKey() || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
     var stamp = new Date().toISOString().slice(0, 10);
     downloadJSON(payload, "annotate-" + slug + "-" + stamp + ".json");
     toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s") + " as " + username, { kind: "success" });
@@ -1987,7 +1996,7 @@
     var incoming = data && Array.isArray(data.comments) ? data.comments : null;
     if (!incoming) { toast("No comments found in that file", { kind: "error" }); return; }
     // Warn if the export came from a different page
-    if (data.page && data.page !== PAGE)
+    if (data.page && data.page !== currentPageKey())
       toast("These comments were from a different page — positions may not match.", { kind: "info", duration: 6000 });
     var existing = {};
     state.comments.forEach(function (c) { existing[c.id] = true; });
@@ -1997,7 +2006,7 @@
       if (c.geom && !isValidGeom(c.geom)) return;  // reject malformed geometry
       if (c.anchor && c.anchor.exact && String(c.anchor.exact).length > 10000) return;
       var copy = JSON.parse(JSON.stringify(c));
-      copy.page = PAGE;
+      copy.page = currentPageKey();
       if (!copy.id || existing[copy.id]) copy.id = uid();
       if (!Array.isArray(copy.replies)) copy.replies = [];
       prepared.push(copy);
@@ -2112,7 +2121,7 @@
     if (comments.length > visible.length)
       lines += "\n… and " + (comments.length - visible.length) + " more comment" + (comments.length - visible.length === 1 ? "" : "s") + " in the JSON file.";
     return {
-      subject: "Review comments — " + (CFG.project || PAGE),
+      subject: "Review comments — " + (CFG.project || currentPagePath()),
       body: "Review of " + location.href + "\n\n" + lines +
         "\n\n(" + comments.length + " comment" + (comments.length === 1 ? "" : "s") +
         ". The full JSON file keeps positions & replies — attach it.)",
@@ -2138,7 +2147,7 @@
 
     var isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dest);
     var sum = shareSummary(comments);
-    var fileSlug = (PAGE || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
+    var fileSlug = (currentPageKey() || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
 
     function step(num, textNode, buttons) {
       return el("div", { class: "an-sstep" }, [
@@ -2246,6 +2255,8 @@
   function load() {
     if (pendingDraft || drawing) return;
     state.comments = pageComments().filter(function (c) { return !pendingDeletes[c.id]; });
+    if (state.activeId && !state.comments.some(function (c) { return c.id === state.activeId; }))
+      state.activeId = null;
     renderAll();
     renderPanel();
     if (firstLoad) {
@@ -2300,7 +2311,8 @@
     import: function () { pickImportFile(); },
     clear: function () {
       var d = dbRead();
-      d.comments = d.comments.filter(function (c) { return c.page !== PAGE; });
+      var pageKey = currentPageKey();
+      d.comments = d.comments.filter(function (c) { return c.page !== pageKey; });
       dbWrite(d);
       load();
     },
