@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>annotate.js — fixed page key test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f8fafc; }
+    nav { padding: 1rem 2rem; display: flex; gap: 1rem; }
+    main { padding: 2rem; }
+  </style>
+</head>
+<body>
+  <nav>
+    <button type="button" onclick="navigate('/fixed-a')">Route A</button>
+    <button type="button" onclick="navigate('/fixed-b')">Route B</button>
+  </nav>
+  <main>
+    <h1>Fixed review page</h1>
+    <p>Comments on this fixture intentionally use one explicit annotation page key across route changes.</p>
+  </main>
+
+  <script>
+    function navigate(path) {
+      history.pushState({}, '', path);
+      if (window.Annotate) window.Annotate.refresh();
+    }
+  </script>
+
+  <script
+    src="../annotate.js"
+    data-project="fixed-page-test"
+    data-page="shared-review"
+    defer
+  ></script>
+</body>
+</html>
