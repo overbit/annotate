@@ -108,7 +108,7 @@ Configure with `data-` attributes on the script tag — all optional:
 | Attribute | Default | Description |
 |-----------|---------|-------------|
 | `data-project` | `""` | Namespace for stored comments. Keep separate sites apart. |
-| `data-page` | `location.pathname` | Page key comments are grouped under. |
+| `data-page` | `location.pathname` | Page key comments are grouped under. Without an explicit value, the current pathname is resolved at runtime so SPA routes stay isolated. |
 | `data-accent` | — | Brand color for primary buttons & the active tool. |
 | `data-theme` | `auto` | `light`, `dark`, or `auto` (sniffs your page background). |
 | `data-position` | `bottom-right` | `bottom-right` or `bottom-left`. |
@@ -139,6 +139,11 @@ Prefer JS config? Set `window.AnnotateConfig` **before** the script loads:
 reviewjs is a plain browser script, so the goal everywhere is the same:
 **load `annotate.js` once, after the page has rendered.** Below are copy-paste
 recipes.
+
+For single-page apps, call `Annotate.refresh()` after client-side navigation or
+after replacing the page content. Unless `data-page` is explicitly set, the
+refresh resolves the current `location.pathname` and loads only that route's
+comments.
 
 ### ⚛️ React (and Next.js)
 
@@ -316,6 +321,7 @@ Annotate.toggle();
 Annotate.enable();            // show the review layer
 Annotate.disable();           // collapse to the launcher
 Annotate.setTool("highlight");// show the layer, then choose cursor | highlight | rect | circle | pen | pin
+Annotate.refresh();           // reload comments after client-side route/content changes
 Annotate.comments();          // → array of comment objects for this page
 Annotate.focus(id);           // scroll to & highlight a comment
 Annotate.export();            // trigger the JSON download
