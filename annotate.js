@@ -2221,13 +2221,32 @@
     if (i >= 0) state.comments[i] = updated; else state.comments.push(updated);
   }
 
+  function commentSourceUrl(c) {
+    if (!c || !c.url) return null;
+    try {
+      var target = new URL(c.url, location.href);
+      if (target.origin !== location.origin) return null;
+      target.hash = "an=" + encodeURIComponent(c.id);
+      return target;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function focusComment(id, scrollToContent) {
+    var c = state.comments.find(function (x) { return x.id === id; });
+    if (!c) return;
+
+    var source = commentSourceUrl(c);
+    if (source && (source.pathname !== location.pathname || source.search !== location.search)) {
+      location.href = source.href;
+      return;
+    }
+
     state.activeId = id;
     renderAll();
     renderPanel();
     if (!state.panelOpen) openPanel();
-    var c = state.comments.find(function (x) { return x.id === id; });
-    if (!c) return;
     if (scrollToContent) {
       var card = listEl.querySelector('[data-id="' + id + '"]');
       if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2270,12 +2289,61 @@
     }
   }
 
+  var lastPageKey = null, routeLoadRaf = null;
+  function cancelRouteInteraction() {
+    if (pendingDraft) cancelDraft();
+    if (drawing) {
+      if (drawing.node && drawing.node.parentNode) drawing.node.parentNode.removeChild(drawing.node);
+      drawing = null;
+      justCancelledDraw = true;
+      setTool("cursor");
+    }
+  }
+  function handleRouteChange() {
+    var nextPageKey = currentPageKey();
+    if (nextPageKey === lastPageKey) return;
+    lastPageKey = nextPageKey;
+
+    // Never leave the previous route's comments visible while the host app
+    // swaps its content. Load the new route after the current render turn.
+    cancelRouteInteraction();
+    state.comments = [];
+    state.activeId = null;
+    renderAll();
+    renderPanel();
+
+    if (routeLoadRaf != null && window.cancelAnimationFrame)
+      window.cancelAnimationFrame(routeLoadRaf);
+    if (window.requestAnimationFrame) {
+      routeLoadRaf = window.requestAnimationFrame(function () {
+        routeLoadRaf = null;
+        load();
+      });
+    } else {
+      setTimeout(load, 0);
+    }
+  }
+  function installRouteSync() {
+    lastPageKey = currentPageKey();
+    ["pushState", "replaceState"].forEach(function (method) {
+      var original = history[method];
+      if (typeof original !== "function") return;
+      history[method] = function () {
+        var result = original.apply(history, arguments);
+        handleRouteChange();
+        return result;
+      };
+    });
+    window.addEventListener("popstate", handleRouteChange);
+  }
+
   function boot() {
     buildUI();
     ensureOverlay();
     setupBlockPlus();
     setTool("cursor");
     renderFooter();
+    installRouteSync();
     load();
     // Start with the review bubble rather than the full
     // toolbar — and never prompt for a name on startup. The name is asked for

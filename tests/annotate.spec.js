@@ -790,7 +790,7 @@ test.describe('Framework integration pages', () => {
     await expect(page.locator('#__an_bar')).toBeVisible();
   });
 
-  test('SPA refresh isolates comments by the current route', async ({ page }) => {
+  test('SPA navigation automatically isolates comments by the current route', async ({ page }) => {
     await page.goto('/examples/spa-integration.html');
     await expect(page.locator('#__an_launch')).toBeVisible();
     await setName(page);
@@ -807,7 +807,7 @@ test.describe('Framework integration pages', () => {
     await page.locator('#__an_compose .an-primary').click();
     await expect(page.locator('.an-card')).toHaveCount(1);
 
-    // pushState + Annotate.refresh() must switch the page namespace.
+    // The host does not call Annotate.refresh(); pushState alone must switch the namespace.
     await page.locator('a[data-route="about"]').click();
     await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/about');
     await expect.poll(() => page.evaluate(() => window.Annotate.config.page)).toBe('/about');
@@ -835,9 +835,15 @@ test.describe('Framework integration pages', () => {
 
     await page.locator('a[data-route="about"]').click();
     await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(comment => comment.text))).toEqual(['About route comment']);
+
+    // Browser back/forward navigation fires popstate rather than pushState.
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/');
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(comment => comment.text))).toEqual(['Home route comment']);
+    await expect(page.locator('.an-pin')).toHaveCount(1);
   });
 
-  test('explicit page config stays fixed across SPA navigation', async ({ page }) => {
+  test('explicit page config stays fixed and comment click returns to its source page', async ({ page }) => {
     await page.addInitScript(() => {
       window.AnnotateConfig = { page: '/fixed-review' };
     });
@@ -852,16 +858,26 @@ test.describe('Framework integration pages', () => {
     await page.locator('#__an_compose textarea').fill('Fixed page comment');
     await page.locator('#__an_compose .an-primary').click();
 
+    const commentId = await page.evaluate(() => window.Annotate.comments()[0].id);
+
     await page.locator('a[data-route="about"]').click();
     await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/about');
     await expect.poll(() => page.evaluate(() => window.Annotate.config.page)).toBe('/fixed-review');
     await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(comment => comment.text))).toEqual(['Fixed page comment']);
 
-    const storedPage = await page.evaluate(() => {
-      const stored = JSON.parse(localStorage.getItem('annotate:spa-test') || '{"comments":[]}');
-      return stored.comments[0] && stored.comments[0].page;
+    const stored = await page.evaluate(() => {
+      const db = JSON.parse(localStorage.getItem('annotate:spa-test') || '{"comments":[]}');
+      return db.comments[0] && { page: db.comments[0].page, url: db.comments[0].url };
     });
-    expect(storedPage).toBe('spa-test:/fixed-review');
+    expect(stored.page).toBe('spa-test:/fixed-review');
+    expect(new URL(stored.url).pathname).toBe('/examples/spa-integration.html');
+
+    // The comment remains visible because the page key is explicitly fixed,
+    // but clicking it must open the route where it was originally written.
+    await page.locator('.an-card').click();
+    await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/examples/spa-integration.html');
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe('#an=' + encodeURIComponent(commentId));
+    await expect(page.locator('.an-card.an-active')).toHaveCount(1);
   });
 });
 

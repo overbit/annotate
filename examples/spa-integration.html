@@ -57,10 +57,9 @@
       document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
       document.getElementById(route).classList.add('active');
       document.querySelector('[data-route="' + route + '"]').classList.add('active');
-      // simulate SPA pushState navigation
+      // simulate SPA pushState navigation. annotate.js observes History API
+      // changes and switches the active page namespace automatically.
       history.pushState({}, '', '/' + (route === 'home' ? '' : route));
-      // let annotate.js reload comments for the new "page"
-      if (window.Annotate) window.Annotate.refresh();
     }
   </script>
 
