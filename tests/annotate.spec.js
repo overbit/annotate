@@ -790,14 +790,72 @@ test.describe('Framework integration pages', () => {
     await expect(page.locator('#__an_bar')).toBeVisible();
   });
 
-  test('SPA navigation keeps toolbar', async ({ page }) => {
+  test('SPA refresh isolates comments by the current pathname', async ({ page }) => {
     await page.goto('/examples/spa-integration.html');
-    await expect(page.locator('#__an_launch')).toBeVisible();
     await setName(page);
-    await expect(page.locator('#__an_bar')).toBeVisible();
-    // Navigate within SPA
-    await page.locator('a[data-route]').first().click();
-    await expect(page.locator('#__an_bar')).toBeVisible({ timeout: 3000 });
+    await page.evaluate(() => navigate('home'));
+
+    async function addPin(selector, text) {
+      await page.evaluate(() => window.Annotate.setTool('pin'));
+      await page.locator(selector).click();
+      const composer = page.locator('#__an_compose');
+      await composer.locator('textarea').fill(text);
+      await composer.locator('.an-primary').click();
+    }
+
+    await addPin('#home h1', 'Home feedback');
+    await expect(page.locator('.an-card')).toHaveCount(1);
+    expect(await page.evaluate(() => window.Annotate.comments().map(c => [c.text, c.page]))).toEqual([
+      ['Home feedback', 'spa-test:/'],
+    ]);
+
+    await page.evaluate(() => navigate('about'));
+    await expect(page.locator('.an-card')).toHaveCount(0);
+    expect(await page.evaluate(() => window.Annotate.config.page)).toBe('/about');
+
+    await addPin('#about h1', 'About feedback');
+    expect(await page.evaluate(() => window.Annotate.comments().map(c => [c.text, c.page]))).toEqual([
+      ['About feedback', 'spa-test:/about'],
+    ]);
+
+    await page.evaluate(() => navigate('home'));
+    await expect(page.locator('.an-card')).toHaveCount(1);
+    expect(await page.evaluate(() => window.Annotate.comments().map(c => c.text))).toEqual(['Home feedback']);
+
+    await page.evaluate(() => navigate('about'));
+    await expect(page.locator('.an-card')).toHaveCount(1);
+    expect(await page.evaluate(() => window.Annotate.comments().map(c => c.text))).toEqual(['About feedback']);
+
+    const storedPages = await page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:spa-test') || '{"comments":[]}');
+      return stored.comments.map(c => c.page).sort();
+    });
+    expect(storedPages).toEqual(['spa-test:/', 'spa-test:/about']);
+  });
+
+  test('explicit data-page remains fixed across SPA route changes', async ({ page }) => {
+    await page.goto('/examples/fixed-page-integration.html');
+    await setName(page);
+
+    await page.evaluate(() => navigate('/fixed-a'));
+    await page.evaluate(() => window.Annotate.setTool('pin'));
+    await page.locator('main h1').click();
+    await page.locator('#__an_compose textarea').fill('Shared-route feedback');
+    await page.locator('#__an_compose .an-primary').click();
+
+    expect(await page.evaluate(() => ({
+      configPage: window.Annotate.config.page,
+      comments: window.Annotate.comments().map(c => [c.text, c.page]),
+    }))).toEqual({
+      configPage: 'shared-review',
+      comments: [['Shared-route feedback', 'fixed-page-test:shared-review']],
+    });
+
+    await page.evaluate(() => navigate('/fixed-b'));
+    await expect(page.locator('.an-card')).toHaveCount(1);
+    expect(await page.evaluate(() => window.Annotate.comments().map(c => c.text))).toEqual([
+      'Shared-route feedback',
+    ]);
   });
 });
 
