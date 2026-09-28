@@ -2221,13 +2221,32 @@
     if (i >= 0) state.comments[i] = updated; else state.comments.push(updated);
   }
 
+  function commentSourceUrl(c) {
+    if (!c || !c.url) return null;
+    try {
+      var target = new URL(c.url, location.href);
+      if (target.origin !== location.origin) return null;
+      target.hash = "an=" + encodeURIComponent(c.id);
+      return target;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function focusComment(id, scrollToContent) {
+    var c = state.comments.find(function (x) { return x.id === id; });
+    if (!c) return;
+
+    var source = commentSourceUrl(c);
+    if (source && (source.pathname !== location.pathname || source.search !== location.search)) {
+      location.href = source.href;
+      return;
+    }
+
     state.activeId = id;
     renderAll();
     renderPanel();
     if (!state.panelOpen) openPanel();
-    var c = state.comments.find(function (x) { return x.id === id; });
-    if (!c) return;
     if (scrollToContent) {
       var card = listEl.querySelector('[data-id="' + id + '"]');
       if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
