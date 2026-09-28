@@ -790,14 +790,78 @@ test.describe('Framework integration pages', () => {
     await expect(page.locator('#__an_bar')).toBeVisible();
   });
 
-  test('SPA navigation keeps toolbar', async ({ page }) => {
+  test('SPA refresh isolates comments by the current route', async ({ page }) => {
     await page.goto('/examples/spa-integration.html');
     await expect(page.locator('#__an_launch')).toBeVisible();
     await setName(page);
     await expect(page.locator('#__an_bar')).toBeVisible();
-    // Navigate within SPA
-    await page.locator('a[data-route]').first().click();
-    await expect(page.locator('#__an_bar')).toBeVisible({ timeout: 3000 });
+
+    // Move the demo onto its logical home route before creating feedback.
+    await page.locator('a[data-route="home"]').click();
+    await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/');
+    await expect.poll(() => page.evaluate(() => window.Annotate.config.page)).toBe('/');
+
+    await page.keyboard.press('p');
+    await page.locator('#home h1').click();
+    await page.locator('#__an_compose textarea').fill('Home route comment');
+    await page.locator('#__an_compose .an-primary').click();
+    await expect(page.locator('.an-card')).toHaveCount(1);
+
+    // pushState + Annotate.refresh() must switch the page namespace.
+    await page.locator('a[data-route="about"]').click();
+    await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/about');
+    await expect.poll(() => page.evaluate(() => window.Annotate.config.page)).toBe('/about');
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().length)).toBe(0);
+    await expect(page.locator('.an-card')).toHaveCount(0);
+    await expect(page.locator('.an-pin')).toHaveCount(0);
+
+    await page.keyboard.press('p');
+    await page.locator('#about h1').click();
+    await page.locator('#__an_compose textarea').fill('About route comment');
+    await page.locator('#__an_compose .an-primary').click();
+    await expect(page.locator('.an-card')).toHaveCount(1);
+
+    const storedPages = await page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:spa-test') || '{"comments":[]}');
+      return stored.comments.map(comment => ({ page: comment.page, text: comment.text }));
+    });
+    expect(storedPages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ page: 'spa-test:/', text: 'Home route comment' }),
+      expect.objectContaining({ page: 'spa-test:/about', text: 'About route comment' }),
+    ]));
+
+    await page.locator('a[data-route="home"]').click();
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(comment => comment.text))).toEqual(['Home route comment']);
+
+    await page.locator('a[data-route="about"]').click();
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(comment => comment.text))).toEqual(['About route comment']);
+  });
+
+  test('explicit page config stays fixed across SPA navigation', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.AnnotateConfig = { page: '/fixed-review' };
+    });
+    await page.goto('/examples/spa-integration.html');
+    await page.waitForFunction(() => !!window.Annotate);
+    await setName(page);
+
+    expect(await page.evaluate(() => window.Annotate.config.page)).toBe('/fixed-review');
+
+    await page.keyboard.press('p');
+    await page.locator('#home h1').click();
+    await page.locator('#__an_compose textarea').fill('Fixed page comment');
+    await page.locator('#__an_compose .an-primary').click();
+
+    await page.locator('a[data-route="about"]').click();
+    await expect.poll(() => page.evaluate(() => location.pathname)).toBe('/about');
+    await expect.poll(() => page.evaluate(() => window.Annotate.config.page)).toBe('/fixed-review');
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(comment => comment.text))).toEqual(['Fixed page comment']);
+
+    const storedPage = await page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:spa-test') || '{"comments":[]}');
+      return stored.comments[0] && stored.comments[0].page;
+    });
+    expect(storedPage).toBe('spa-test:/fixed-review');
   });
 });
 
