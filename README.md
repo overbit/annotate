@@ -288,18 +288,25 @@ Because everything is local, sharing is an explicit, privacy-friendly action:
 
 1. A reviewer opens the **Comments panel** (toolbar list icon or press `A`).
 2. They click **Download** (⬇), enter the name to attach to the export, and save
-   a `annotate-<page>-<date>.json` file.
-3. They send you that file.
-4. You open the same page, click **Import** (⬆), pick the file — every comment
-   reappears anchored in place with the exporter's name.
+   a `annotate-<domain-or-project>-<date>.json` file.
+3. The download contains **all comments stored for the current domain/project**,
+   including comments from other pages. Each comment keeps its own `page` and
+   `url`, so a new domain-scoped import restores comments to their original pages.
+4. They send you that file and you click **Import** (⬆) anywhere in the same
+   review project/domain.
 
-This makes files from multiple reviewers safe to import into the same page
-without losing who supplied each comment. Export attribution is applied only
-to the downloaded copy; comments already stored in the reviewer's browser are
-not rewritten.
+Domain-wide exports add `"scope": "domain"` as an additive metadata field.
+Older page-scoped export files do not have this field and remain fully
+supported: when imported, their comments are placed on the current page exactly
+as in previous releases. Older Annotate releases can still read the new JSON
+shape because the existing `kind`, `page`, and `comments` fields are unchanged;
+they simply fall back to their legacy page-import behavior.
 
-To paste feedback directly into another tool, click **Copy** to copy the same
-complete, import-compatible JSON payload to the clipboard.
+Export attribution is applied only to the downloaded copy; comments already
+stored in the reviewer's browser are not rewritten.
+
+**Copy** remains page-scoped for compatibility and copies the comments currently
+loaded on the active page.
 
 You can also drive this from code (see the API below).
 
@@ -318,7 +325,7 @@ Annotate.disable();           // collapse to the launcher
 Annotate.setTool("highlight");// show the layer, then choose cursor | highlight | rect | circle | pen | pin
 Annotate.comments();          // → array of comment objects for this page
 Annotate.focus(id);           // scroll to & highlight a comment
-Annotate.export();            // trigger the JSON download
+Annotate.export();            // download all comments for this domain/project
 Annotate.import();            // open the file picker
 Annotate.clear();             // delete all comments on this page (local)
 Annotate.toast("Saved!");     // show a toast
