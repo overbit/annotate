@@ -1045,6 +1045,116 @@ test.describe('Framework integration pages', () => {
 // ANCHOR DEEP-LINK
 // ============================================================
 test.describe('Deep linking', () => {
+  test('cross-page click repairs stale imported page keys and restores destination comments', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await page.waitForFunction(() => !!window.Annotate);
+
+    await page.evaluate(() => {
+      const now = new Date().toISOString();
+      const destination = location.origin + '/examples/multi-page-b.html';
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({ comments: [
+        {
+          id: 'stale-cross-page-1',
+          page: 'multi-page-test:/examples/multi-page-a.html',
+          url: destination,
+          type: 'pin',
+          author: 'Imported Reviewer',
+          text: 'Destination comment one',
+          color: '#f59e0b',
+          geom: { kind: 'pin', selector: 'body', x: 0.35, y: 0.3 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'stale-cross-page-2',
+          page: 'multi-page-test:/examples/multi-page-a.html',
+          url: destination,
+          type: 'pin',
+          author: 'Imported Reviewer',
+          text: 'Destination comment two',
+          color: '#0ea5e9',
+          geom: { kind: 'pin', selector: 'body', x: 0.55, y: 0.45 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ] }));
+      window.Annotate.refresh();
+    });
+
+    await expect(page.locator('.an-card')).toHaveCount(2);
+
+    await page.locator('.an-card[data-id="stale-cross-page-1"]').click();
+
+    await expect.poll(() => page.evaluate(() => location.pathname))
+      .toBe('/examples/multi-page-b.html');
+    await expect.poll(() => page.evaluate(() => location.hash))
+      .toBe('#an=stale-cross-page-1');
+    await expect(page.locator('.an-card')).toHaveCount(2);
+    await expect(page.locator('.an-card.an-active'))
+      .toHaveAttribute('data-id', 'stale-cross-page-1');
+
+    const storedPages = await page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:multi-page-test') || '{"comments":[]}');
+      return stored.comments.map(comment => comment.page);
+    });
+    expect(storedPages).toEqual([
+      'multi-page-test:/examples/multi-page-b.html',
+      'multi-page-test:/examples/multi-page-b.html',
+    ]);
+  });
+
+  test('domain import derives page keys from each comment source URL', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await page.waitForFunction(() => !!window.Annotate);
+
+    const origin = await page.evaluate(() => location.origin);
+    const now = new Date().toISOString();
+    const payload = {
+      annotate: '1.2.0',
+      kind: 'annotate-export',
+      scope: 'domain',
+      origin,
+      project: 'legacy-project',
+      comments: [{
+        id: 'rebased-domain-comment',
+        page: 'legacy-project:/wrong-page',
+        url: origin + '/examples/multi-page-b.html',
+        type: 'pin',
+        author: 'Domain Importer',
+        text: 'Rebased from URL',
+        color: '#8b5cf6',
+        geom: { kind: 'pin', selector: 'body', x: 0.4, y: 0.35 },
+        resolved: false,
+        replies: [],
+        createdAt: now,
+        updatedAt: now,
+      }],
+    };
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.evaluate(() => window.Annotate.import());
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: 'domain-import.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(payload)),
+    });
+
+    await expect.poll(() => page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:multi-page-test') || '{"comments":[]}');
+      const comment = stored.comments.find(c => c.id === 'rebased-domain-comment');
+      return comment && comment.page;
+    })).toBe('multi-page-test:/examples/multi-page-b.html');
+
+    await page.goto('/examples/multi-page-b.html#an=rebased-domain-comment');
+    await expect(page.locator('.an-card.an-active'))
+      .toHaveAttribute('data-id', 'rebased-domain-comment');
+  });
+
   test('#an= hash focuses the correct comment', async ({ page }) => {
     // Set storage + set hash in URL, then reload so annotate.js boots with both
     await page.evaluate(() => {
