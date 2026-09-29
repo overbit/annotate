@@ -1690,7 +1690,7 @@
       if (pinLayer) pinLayer.style.display = "none";
       if (root) root.style.display = "none";
       if (launchEl) {
-        var n = state.comments.filter(function (c) { return !c.resolved; }).length;
+        var n = panelComments().filter(function (c) { return !c.resolved; }).length;
         launchEl.querySelector("span").textContent = n ? "Review (" + n + ")" : "Review";
         launchEl.classList.add("an-show");
       }
