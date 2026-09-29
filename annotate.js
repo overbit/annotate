@@ -173,6 +173,52 @@
     return d;
   }
   function dbWrite(d) { store.set(STORE_KEY, JSON.stringify(d)); }
+  function stableJSON(value) {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value))
+      return "[" + value.map(function (item) { return stableJSON(item); }).join(",") + "]";
+    return "{" + Object.keys(value).sort().map(function (key) {
+      return JSON.stringify(key) + ":" + stableJSON(value[key]);
+    }).join(",") + "}";
+  }
+  function duplicateCommentKey(c) {
+    var comparable = {};
+    Object.keys(c || {}).sort().forEach(function (key) {
+      // Only the top-level comment id is ignored. Reply ids and every other
+      // field remain part of the identity so near-duplicates are preserved.
+      if (key !== "id") comparable[key] = c[key];
+    });
+    return stableJSON(comparable);
+  }
+  function duplicateCommentIds(comments) {
+    var seen = Object.create(null), duplicates = [];
+    (comments || []).forEach(function (c) {
+      var key = duplicateCommentKey(c);
+      if (seen[key]) duplicates.push(c.id);
+      else seen[key] = true;
+    });
+    return duplicates;
+  }
+  function clearDuplicateComments(confirmFirst) {
+    var d = dbRead();
+    var duplicates = duplicateCommentIds(d.comments);
+    if (!duplicates.length) {
+      toast("No duplicate comments found", { kind: "info" });
+      return 0;
+    }
+    if (confirmFirst !== false && !window.confirm(
+      "Remove " + duplicates.length + " duplicate comment" +
+      (duplicates.length === 1 ? "" : "s") + "? The first copy of each will be kept."
+    )) return 0;
+    var remove = Object.create(null);
+    duplicates.forEach(function (id) { remove[id] = true; });
+    d.comments = d.comments.filter(function (c) { return !remove[c.id]; });
+    dbWrite(d);
+    load();
+    toast("Removed " + duplicates.length + " duplicate comment" +
+      (duplicates.length === 1 ? "" : "s"), { kind: "success" });
+    return duplicates.length;
+  }
   function uid() {
     if (window.crypto && crypto.getRandomValues) {
       var arr = new Uint32Array(3);
@@ -533,6 +579,15 @@
   #__an_foot .an-footrow.an-four .an-fbtn { flex-basis:calc(50% - 4px); }
   #__an_foot .an-fbtn:hover { background: var(--an-surface-2); border-color: var(--an-btn-bg); }
   #__an_foot .an-fbtn svg { width:15px; height:15px; }
+  #__an_foot .an-maintrow { display:flex; }
+  #__an_foot .an-maintbtn { width:100%; border:1px solid rgba(225,29,72,.25);
+    background:rgba(225,29,72,.05); color:var(--an-danger); border-radius:10px;
+    padding:7px 10px; font:600 11.5px var(--an-font); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    transition:background .15s,border-color .15s; }
+  #__an_foot .an-maintbtn:hover { background:rgba(225,29,72,.1);
+    border-color:rgba(225,29,72,.4); }
+  #__an_foot .an-maintbtn svg { width:13px; height:13px; }
 
   /* ---- composer popover -------------------------------------------------- */
   #__an_compose { position:absolute; z-index:2147483300; width:304px;
@@ -2178,6 +2233,7 @@
     if (!footEl) return;
     var n = state.comments.length;
     var canShare = !!(state.share && state.share.trim());
+    var duplicateCount = duplicateCommentIds(dbRead().comments).length;
     footEl.innerHTML = "";
     footEl.appendChild(el("div", { class: "an-localnote" }, [
       el("span", { html: ICONS.info }),
@@ -2191,6 +2247,17 @@
       canShare ? el("button", { class: "an-fbtn", title: "Send comments to " + state.share, html: ICONS.share + "<span>Share</span>", onclick: shareComments }) : null,
       el("button", { class: "an-fbtn", html: ICONS.upload + "<span>Import</span>", onclick: pickImportFile }),
     ]));
+    if (duplicateCount) {
+      footEl.appendChild(el("div", { class: "an-maintrow" }, [
+        el("button", {
+          class: "an-maintbtn",
+          "data-action": "clear-duplicates",
+          title: "Remove exact duplicate comments and keep the first copy",
+          html: ICONS.trash + "<span>Clear duplicates (" + duplicateCount + ")</span>",
+          onclick: function () { clearDuplicateComments(true); }
+        }),
+      ]));
+    }
   }
 
   // Copy text to the clipboard with graceful fallback + toast feedback.
@@ -2503,6 +2570,7 @@
     toast: toast,
     export: function () { exportComments(); },
     import: function () { pickImportFile(); },
+    clearDuplicates: function () { return clearDuplicateComments(false); },
     clear: function () {
       var d = dbRead();
       var pageKey = currentPageKey();

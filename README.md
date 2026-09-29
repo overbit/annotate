@@ -290,7 +290,10 @@ Because everything is local, sharing is an explicit, privacy-friendly action:
 1. A reviewer opens the **Comments panel** (toolbar list icon or press `A`).
    The panel shows comments from all pages in the current domain/project by
    default. Use the page selector to switch between **All pages**, **Current
-   page**, or any individual page discovered in the stored review.
+   page**, or any individual page discovered in the stored review. If exact
+   duplicate comments are detected, the footer shows **Clear duplicates (N)**.
+   Clearing duplicates keeps the first stored copy and removes later copies only
+   when every comment field is identical except the top-level `id`.
 2. They click **Download** (⬇), enter the name to attach to the export, and save
    a `annotate-<domain-or-project>-<date>.json` file.
 3. The download contains **all comments stored for the current domain/project**,
@@ -331,6 +334,7 @@ Annotate.comments();          // → page-scoped comments currently rendered on 
 Annotate.focus(id);           // scroll to & highlight a comment
 Annotate.export();            // download all comments for this domain/project
 Annotate.import();            // open the file picker
+Annotate.clearDuplicates();   // remove exact domain-wide duplicates; returns removed count
 Annotate.clear();             // delete all comments on this page (local)
 Annotate.toast("Saved!");     // show a toast
 Annotate.version;             // "1.2.0"
