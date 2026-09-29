@@ -62,8 +62,11 @@
     if (!PAGE_OVERRIDE) CFG.page = page;
     return page;
   }
+  function pageKeyForPath(path) {
+    return (CFG.project ? CFG.project + ":" : "") + path;
+  }
   function currentPageKey() {
-    return (CFG.project ? CFG.project + ":" : "") + currentPagePath();
+    return pageKeyForPath(currentPagePath());
   }
 
   // localStorage can be denied (private mode, sandboxed iframes) — never crash
@@ -2001,6 +2004,24 @@
     if (g.kind === "block") return typeof g.selector === "string" && g.selector.length < 4096;
     return true;
   }
+  function importedDomainPageKey(c, data) {
+    try {
+      var target = new URL(c && c.url ? c.url : "", location.href);
+      if (target.origin === location.origin) return pageKeyForPath(target.pathname);
+    } catch (e) {}
+
+    var page = c && typeof c.page === "string" ? c.page : "";
+    var exportedProject = data && typeof data.project === "string" ? data.project : "";
+    if (exportedProject && page.indexOf(exportedProject + ":") === 0)
+      page = page.slice(exportedProject.length + 1);
+    else {
+      var m = page.match(/^[^:]+:(\/.*)$/);
+      if (m) page = m[1];
+    }
+    if (page.charAt(0) === "/") return pageKeyForPath(page);
+    return currentPageKey();
+  }
+
   function importComments(data) {
     var incoming = data && Array.isArray(data.comments) ? data.comments : null;
     if (!incoming) { toast("No comments found in that file", { kind: "error" }); return; }
@@ -2018,7 +2039,9 @@
       if (c.geom && !isValidGeom(c.geom)) return;  // reject malformed geometry
       if (c.anchor && c.anchor.exact && String(c.anchor.exact).length > 10000) return;
       var copy = JSON.parse(JSON.stringify(c));
-      if (!preservePages || typeof copy.page !== "string" || !copy.page)
+      if (preservePages)
+        copy.page = importedDomainPageKey(copy, data);
+      else
         copy.page = currentPageKey();
       if (!copy.id || existing[copy.id]) copy.id = uid();
       existing[copy.id] = true;
@@ -2284,8 +2307,25 @@
   // BOOT
   // ==========================================================================
   var firstLoad = true;
+  function repairStoredPagesForCurrentUrl() {
+    var d = dbRead();
+    var pageKey = currentPageKey();
+    var changed = false;
+    d.comments.forEach(function (c) {
+      if (!c || !c.url || c.page === pageKey) return;
+      try {
+        var target = new URL(c.url, location.href);
+        if (target.origin === location.origin && target.pathname === location.pathname) {
+          c.page = pageKey;
+          changed = true;
+        }
+      } catch (e) {}
+    });
+    if (changed) dbWrite(d);
+  }
   function load() {
     if (pendingDraft || drawing) return;
+    repairStoredPagesForCurrentUrl();
     state.comments = pageComments().filter(function (c) { return !pendingDeletes[c.id]; });
     if (state.activeId && !state.comments.some(function (c) { return c.id === state.activeId; }))
       state.activeId = null;
