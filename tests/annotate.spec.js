@@ -466,6 +466,57 @@ test.describe('Export / Import', () => {
     expect(storedAuthors.every(author => author !== 'Export Reviewer')).toBe(true);
   });
 
+  test('domain export attributes only the exporting reviewer own comments', async ({ page }) => {
+    // A comment written by somebody else, on this same page, so only the
+    // attribution rule can keep it out of the exporter's name.
+    await page.evaluate(() => {
+      const key = 'annotate:annotate-demo';
+      const stored = JSON.parse(localStorage.getItem(key) || '{"comments":[]}');
+      stored.comments[0].author = 'Alice';
+      localStorage.setItem(key, JSON.stringify(stored));
+      window.Annotate.refresh();
+    });
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(() => window.Annotate.export()),
+    ]);
+    const stream = await download.createReadStream();
+    const chunks = [];
+    await new Promise((res, rej) => { stream.on('data', c => chunks.push(c)); stream.on('end', res); stream.on('error', rej); });
+    const json = JSON.parse(Buffer.concat(chunks).toString());
+
+    expect(json.exportedBy).toBe('Export Reviewer');
+    expect(json.comments.map(c => c.text)).toEqual(['Export test comment']);
+    expect(json.comments[0].author).toBe('Alice');
+
+    // The toast must disclose that a comment kept its original author.
+    await expect(page.locator('.an-toast.an-success')).toContainText('kept their original author');
+  });
+
+  test('domain export still attributes anonymous comments to the exporter', async ({ page }) => {
+    await page.evaluate(() => {
+      const key = 'annotate:annotate-demo';
+      const stored = JSON.parse(localStorage.getItem(key) || '{"comments":[]}');
+      stored.comments[0].author = 'Anonymous';
+      localStorage.setItem(key, JSON.stringify(stored));
+      window.Annotate.refresh();
+    });
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(() => window.Annotate.export()),
+    ]);
+    const stream = await download.createReadStream();
+    const chunks = [];
+    await new Promise((res, rej) => { stream.on('data', c => chunks.push(c)); stream.on('end', res); stream.on('error', rej); });
+    const json = JSON.parse(Buffer.concat(chunks).toString());
+
+    // Comments written before a name was set are the exporter's own work.
+    expect(json.comments[0].author).toBe('Export Reviewer');
+    await expect(page.locator('.an-toast.an-success')).not.toContainText('kept their original author');
+  });
+
   test('download exports comments from every page in the current domain', async ({ page }) => {
     await page.evaluate(() => {
       const key = 'annotate:annotate-demo';
@@ -624,6 +675,95 @@ test.describe('Export / Import', () => {
     }, payload);
 
     await expect(page.locator('.an-card')).toHaveCount(2);
+  });
+
+  test('domain import skips comments from a different review project', async ({ page }) => {
+    const origin = await page.evaluate(() => location.origin);
+    const payload = {
+      annotate: '1.2.0',
+      kind: 'annotate-export',
+      scope: 'domain',
+      origin,
+      project: 'other-project',
+      page: 'other-project:/',
+      comments: [{
+        id: 'foreign-1',
+        page: 'other-project:/pricing',
+        url: origin + '/pricing',
+        type: 'pin',
+        author: 'Foreign Reviewer',
+        text: 'Belongs to another project',
+        color: '#8b5cf6',
+        geom: { kind: 'pin', selector: 'body', x: 0.3, y: 0.3 },
+        resolved: false,
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }],
+    };
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.evaluate(() => window.Annotate.import());
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: 'foreign-export.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(payload)),
+    });
+
+    // Nothing may be stored: an unreachable page key would leave a comment
+    // that never renders and that clear() can never remove.
+    await expect(page.locator('.an-toast.an-info')).toContainText('different review project');
+    const stored = await page.evaluate(() => {
+      const d = JSON.parse(localStorage.getItem('annotate:annotate-demo') || '{"comments":[]}');
+      return d.comments.map(c => c.text);
+    });
+    expect(stored).not.toContain('Belongs to another project');
+  });
+
+  test('domain import keeps comments that share this project prefix', async ({ page }) => {
+    const origin = await page.evaluate(() => location.origin);
+    const payload = {
+      annotate: '1.2.0',
+      kind: 'annotate-export',
+      scope: 'domain',
+      origin: 'https://staging.example.test',
+      project: 'annotate-demo',
+      page: 'annotate-demo:/',
+      comments: [{
+        id: 'same-project-1',
+        page: 'annotate-demo:/pricing',
+        url: origin + '/pricing',
+        type: 'pin',
+        author: 'Domain Reviewer',
+        text: 'Same project, other origin',
+        color: '#8b5cf6',
+        geom: { kind: 'pin', selector: 'body', x: 0.3, y: 0.3 },
+        resolved: false,
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }],
+    };
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.evaluate(() => window.Annotate.import());
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: 'same-project-export.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(payload)),
+    });
+
+    // A matching project prefix is legitimate even across origins, so the
+    // comment is kept and the origin difference is surfaced as info.
+    await expect(page.locator('.an-toast.an-info')).toContainText('staging.example.test');
+    const stored = await page.evaluate(() => {
+      const d = JSON.parse(localStorage.getItem('annotate:annotate-demo') || '{"comments":[]}');
+      const c = d.comments.find(x => x.text === 'Same project, other origin');
+      return c && c.page;
+    });
+    expect(stored).toBe('annotate-demo:/pricing');
   });
 
   test('legacy page export still imports onto the current page', async ({ page }) => {
@@ -1228,6 +1368,36 @@ test.describe('Startup bubble & author config', () => {
     // closes via Done
     await dlg.locator('button:has-text("Done")').click();
     await expect(page.locator('#__an_sharewrap')).toHaveCount(0);
+  });
+
+  test('share dialog advertises the filename Download actually produces', async ({ page }) => {
+    // A path with real segments: the dialog hint used to be built from the page
+    // key, which diverges from the real download filename as soon as the path
+    // is not equal to the project name.
+    await page.goto('/examples/collapsed-startup.html');
+    await setName(page, 'Reviewer A');
+    await page.keyboard.press('p');
+    await page.locator('h1').first().click();
+    const composer = page.locator('#__an_compose');
+    await expect(composer).toHaveClass(/an-show/);
+    await composer.locator('textarea').fill('A note');
+    await composer.locator('.an-primary').click();
+
+    await page.evaluate(() => { window.prompt = () => 'Export Reviewer'; });
+    await page.locator('#__an_foot .an-footrow button:has-text("Share")').click();
+    const dlg = page.locator('#__an_sharebox');
+    await expect(dlg).toBeVisible();
+    const hint = await dlg.locator('.an-sstep b').first().innerText();
+
+    const today = await page.evaluate(() => new Date().toISOString().slice(0, 10));
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      dlg.locator('button:has-text("Download JSON")').click(),
+    ]);
+
+    // The hint is truncated with an ellipsis, so compare the stable stem only.
+    const stem = hint.replace(/^\(annotate-/, '').replace(/\.json\)$/, '').replace(/-\u2026$/, '');
+    expect(download.suggestedFilename()).toBe(`annotate-${stem}-${today}.json`);
   });
 });
 

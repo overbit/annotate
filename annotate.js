@@ -1893,7 +1893,7 @@
   }
 
   // --------------------------------------------------------------------------
-  // EXPORT / IMPORT — share a page's review as a portable JSON file
+  // EXPORT / IMPORT — share this project's review as a portable JSON file
   // --------------------------------------------------------------------------
   function downloadJSON(payload, filename) {
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1905,11 +1905,28 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
+  // A comment belongs to whoever is exporting it when it carries their own name
+  // — or no name at all, since comments written before a name was set are
+  // stored as "Anonymous". Anything attributed to somebody else is left alone:
+  // a domain export must never claim authorship of another reviewer's
+  // comments, because preserving who supplied each comment is the whole point
+  // of the multi-reviewer export flow.
+  function isOwnComment(c) {
+    return c.author === state.author || c.author === "Anonymous";
+  }
+
+  // Filename stem shared by the Download button and the share dialog, so the
+  // name the dialog advertises is always the name the browser actually saves.
+  function exportSlug() {
+    return (CFG.project || location.host || "domain")
+      .replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "domain";
+  }
+
   function buildExportPayload(exporter, scope) {
     var source = scope === "domain" ? dbRead().comments : state.comments;
     var comments = source.map(function (c) {
       var copy = JSON.parse(JSON.stringify(c));
-      if (exporter) copy.author = exporter;
+      if (exporter && isOwnComment(c)) copy.author = exporter;
       return copy;
     });
     if (!comments.length) return null;
@@ -1955,10 +1972,13 @@
     if (!username) return;
     payload = buildExportPayload(username, "domain");
     var comments = payload.comments;
-    var slug = (CFG.project || location.host || "domain").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "domain";
+    // Surface anything deliberately left attributed to its original author so
+    // nobody forwards a file believing every comment in it is their own.
+    var kept = comments.filter(function (c) { return c.author !== username; }).length;
     var stamp = new Date().toISOString().slice(0, 10);
-    downloadJSON(payload, "annotate-" + slug + "-" + stamp + ".json");
-    toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s") + " from this domain as " + username, { kind: "success" });
+    downloadJSON(payload, "annotate-" + exportSlug() + "-" + stamp + ".json");
+    toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s") + " from this domain as " + username +
+      (kept ? " · " + kept + " kept their original author" : ""), { kind: "success" });
   }
 
   function copyComments() {
@@ -2001,22 +2021,40 @@
     if (g.kind === "block") return typeof g.selector === "string" && g.selector.length < 4096;
     return true;
   }
+  // Page keys are "<project>:<path>" when data-project is set, otherwise just
+  // the path. A comment carrying a different project prefix can never match a
+  // page in this store, so importing it would leave behind a comment that is
+  // invisible on every page and impossible to delete — clear() and the
+  // per-comment delete are both page-scoped. Such comments are skipped.
+  function isForeignProjectPage(pageKey) {
+    if (!CFG.project) return false;
+    if (typeof pageKey !== "string" || !pageKey) return false;
+    return pageKey.slice(0, CFG.project.length + 1) !== CFG.project + ":";
+  }
+
   function importComments(data) {
     var incoming = data && Array.isArray(data.comments) ? data.comments : null;
     if (!incoming) { toast("No comments found in that file", { kind: "error" }); return; }
     var preservePages = data.scope === "domain";
-    // Legacy exports are page-scoped. Keep their historical behavior: import
-    // every comment onto the page where the file is imported.
-    if (!preservePages && data.page && data.page !== currentPageKey())
+    if (preservePages) {
+      // Page paths in a domain export are only meaningful on the site they were
+      // written on, so say so rather than silently re-anchoring them elsewhere.
+      if (data.origin && data.origin !== location.origin)
+        toast("This file was exported from " + data.origin + " — its page paths will be matched against this site.", { kind: "info", duration: 8000 });
+    } else if (data.page && data.page !== currentPageKey()) {
+      // Legacy exports are page-scoped. Keep their historical behavior: import
+      // every comment onto the page where the file is imported.
       toast("These comments were from a different page — positions may not match.", { kind: "info", duration: 6000 });
+    }
     var d = dbRead();
     var existing = {};
     d.comments.forEach(function (c) { existing[c.id] = true; });
-    var prepared = [];
+    var prepared = [], skipped = 0;
     incoming.forEach(function (c) {
       if (!c || (!c.text && !c.anchor && !c.geom)) return;
       if (c.geom && !isValidGeom(c.geom)) return;  // reject malformed geometry
       if (c.anchor && c.anchor.exact && String(c.anchor.exact).length > 10000) return;
+      if (preservePages && isForeignProjectPage(c.page)) { skipped++; return; }
       var copy = JSON.parse(JSON.stringify(c));
       if (!preservePages || typeof copy.page !== "string" || !copy.page)
         copy.page = currentPageKey();
@@ -2025,11 +2063,17 @@
       if (!Array.isArray(copy.replies)) copy.replies = [];
       prepared.push(copy);
     });
-    if (!prepared.length) { toast("Nothing new to import", { kind: "info" }); return; }
+    if (!prepared.length) {
+      toast(skipped
+        ? "Skipped " + skipped + " comment" + (skipped === 1 ? "" : "s") + " from a different review project"
+        : "Nothing new to import", { kind: "info" });
+      return;
+    }
     d.comments = d.comments.concat(prepared);
     dbWrite(d);
     load();
-    toast("Imported " + prepared.length + " comment" + (prepared.length === 1 ? "" : "s"), { kind: "success" });
+    toast("Imported " + prepared.length + " comment" + (prepared.length === 1 ? "" : "s") +
+      (skipped ? " · skipped " + skipped + " from another project" : ""), { kind: "success" });
   }
 
   function copyLink(id) {
@@ -2160,7 +2204,7 @@
 
     var isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dest);
     var sum = shareSummary(comments);
-    var fileSlug = (currentPageKey() || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
+    var fileSlug = exportSlug();
 
     function step(num, textNode, buttons) {
       return el("div", { class: "an-sstep" }, [

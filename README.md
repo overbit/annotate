@@ -302,8 +302,29 @@ as in previous releases. Older Annotate releases can still read the new JSON
 shape because the existing `kind`, `page`, and `comments` fields are unchanged;
 they simply fall back to their legacy page-import behavior.
 
-Export attribution is applied only to the downloaded copy; comments already
-stored in the reviewer's browser are not rewritten.
+### Who owns a comment in an export
+
+The name you enter at export is attached to **your own** comments only. A comment
+written by somebody else keeps its original `author`, so one reviewer can never
+rewrite another reviewer's attribution by downloading a file. Comments saved
+before a name was set are stored as `Anonymous` and count as yours, since nobody
+else claimed them.
+
+Because a download spans the whole project, the confirmation toast tells you how
+many comments kept their original author — worth reading before you forward a
+file. Attribution is applied only to the downloaded copy; comments already stored
+in the reviewer's browser are not rewritten.
+
+### Importing into the right project
+
+Page keys are namespaced by `data-project`, so a file only restores correctly into
+the project it came from:
+
+- Comments whose `page` belongs to a **different project** are skipped, and the
+  toast reports how many. Storing them would leave comments that render on no
+  page and that `clear()` cannot remove.
+- A file exported from a **different origin** but the same project is imported
+  normally, with a notice — page paths are matched against the current site.
 
 **Copy** remains page-scoped for compatibility and copies the comments currently
 loaded on the active page.
