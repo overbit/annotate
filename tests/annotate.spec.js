@@ -466,6 +466,86 @@ test.describe('Export / Import', () => {
     expect(storedAuthors.every(author => author !== 'Export Reviewer')).toBe(true);
   });
 
+  test('download exports comments from every page in the current domain', async ({ page }) => {
+    await page.evaluate(() => {
+      const key = 'annotate:annotate-demo';
+      const stored = JSON.parse(localStorage.getItem(key) || '{"comments":[]}');
+      stored.comments.push({
+        id: 'other-page-comment',
+        page: 'annotate-demo:/other-page',
+        url: location.origin + '/other-page',
+        type: 'pin',
+        author: 'Other Reviewer',
+        text: 'Comment from another page',
+        color: '#0ea5e9',
+        geom: { kind: 'pin', selector: 'body', x: 0.25, y: 0.25 },
+        resolved: false,
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      localStorage.setItem(key, JSON.stringify(stored));
+    });
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(() => window.Annotate.export()),
+    ]);
+    const stream = await download.createReadStream();
+    const chunks = [];
+    await new Promise((res, rej) => { stream.on('data', c => chunks.push(c)); stream.on('end', res); stream.on('error', rej); });
+    const json = JSON.parse(Buffer.concat(chunks).toString());
+
+    expect(json.scope).toBe('domain');
+    expect(json.origin).toBe(await page.evaluate(() => location.origin));
+    expect(json.comments).toHaveLength(2);
+    expect(json.comments.map(comment => comment.text)).toEqual(expect.arrayContaining([
+      'Export test comment',
+      'Comment from another page',
+    ]));
+    expect(json.comments.map(comment => comment.page)).toEqual(expect.arrayContaining([
+      'annotate-demo:/',
+      'annotate-demo:/other-page',
+    ]));
+  });
+
+  test('download works when only another page has comments', async ({ page }) => {
+    await page.evaluate(() => {
+      const key = 'annotate:annotate-demo';
+      const stored = JSON.parse(localStorage.getItem(key) || '{"comments":[]}');
+      stored.comments = [{
+        id: 'other-page-only',
+        page: 'annotate-demo:/elsewhere',
+        url: location.origin + '/elsewhere',
+        type: 'pin',
+        author: 'Elsewhere',
+        text: 'Only stored on another page',
+        color: '#10b981',
+        geom: { kind: 'pin', selector: 'body', x: 0.4, y: 0.4 },
+        resolved: false,
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }];
+      localStorage.setItem(key, JSON.stringify(stored));
+      window.Annotate.refresh();
+    });
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().length)).toBe(0);
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.evaluate(() => window.Annotate.export()),
+    ]);
+    const stream = await download.createReadStream();
+    const chunks = [];
+    await new Promise((res, rej) => { stream.on('data', c => chunks.push(c)); stream.on('end', res); stream.on('error', rej); });
+    const json = JSON.parse(Buffer.concat(chunks).toString());
+
+    expect(json.scope).toBe('domain');
+    expect(json.comments).toHaveLength(1);
+    expect(json.comments[0].text).toBe('Only stored on another page');
+  });
+
   test('copy button copies the complete export JSON', async ({ page }) => {
     await page.evaluate(() => {
       Object.defineProperty(navigator, 'clipboard', {
@@ -544,6 +624,85 @@ test.describe('Export / Import', () => {
     }, payload);
 
     await expect(page.locator('.an-card')).toHaveCount(2);
+  });
+
+  test('legacy page export still imports onto the current page', async ({ page }) => {
+    const currentPage = await page.evaluate(() => window.Annotate.comments()[0].page);
+    const payload = {
+      annotate: '1.2.0',
+      kind: 'annotate-export',
+      page: 'annotate-demo:/legacy-source',
+      comments: [{
+        id: 'legacy-import',
+        page: 'annotate-demo:/legacy-source',
+        url: location.origin + '/legacy-source',
+        type: 'pin',
+        author: 'Legacy Reviewer',
+        text: 'Legacy page import',
+        color: '#f59e0b',
+        geom: { kind: 'pin', selector: 'body', x: 0.5, y: 0.5 },
+        resolved: false,
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }],
+    };
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.evaluate(() => window.Annotate.import());
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: 'legacy-export.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(payload)),
+    });
+
+    await expect.poll(() => page.evaluate(() => {
+      const comment = window.Annotate.comments().find(c => c.text === 'Legacy page import');
+      return comment && comment.page;
+    })).toBe(currentPage);
+  });
+
+  test('domain export import preserves each comment page', async ({ page }) => {
+    const origin = await page.evaluate(() => location.origin);
+    const payload = {
+      annotate: '1.2.0',
+      kind: 'annotate-export',
+      scope: 'domain',
+      origin,
+      page: 'annotate-demo:/',
+      comments: [{
+        id: 'domain-import-other-page',
+        page: 'annotate-demo:/preserved-page',
+        url: origin + '/preserved-page',
+        type: 'pin',
+        author: 'Domain Reviewer',
+        text: 'Preserve this page',
+        color: '#8b5cf6',
+        geom: { kind: 'pin', selector: 'body', x: 0.3, y: 0.3 },
+        resolved: false,
+        replies: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }],
+    };
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.evaluate(() => window.Annotate.import());
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+      name: 'domain-export.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(payload)),
+    });
+
+    await expect.poll(() => page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:annotate-demo') || '{"comments":[]}');
+      const comment = stored.comments.find(c => c.text === 'Preserve this page');
+      return comment && comment.page;
+    })).toBe('annotate-demo:/preserved-page');
+
+    expect(await page.evaluate(() => window.Annotate.comments().some(c => c.text === 'Preserve this page'))).toBe(false);
   });
 
   test('exporting zero comments shows info toast', async ({ page }) => {
