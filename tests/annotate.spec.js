@@ -1042,6 +1042,173 @@ test.describe('Framework integration pages', () => {
 });
 
 // ============================================================
+// DOMAIN-WIDE REVIEW LIST
+// ============================================================
+test.describe('Domain-wide review list', () => {
+  test('shows comments from all pages while rendering markers only for the current page', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    await page.evaluate(() => {
+      const now = new Date().toISOString();
+      const origin = location.origin;
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({ comments: [
+        {
+          id: 'page-a-comment',
+          page: 'multi-page-test:/examples/multi-page-a.html',
+          url: origin + '/examples/multi-page-a.html',
+          type: 'pin',
+          author: 'Reviewer A',
+          text: 'Comment on page A',
+          color: '#f59e0b',
+          geom: { kind: 'pin', selector: 'body', x: 0.3, y: 0.3 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'page-b-comment',
+          page: 'multi-page-test:/examples/multi-page-b.html',
+          url: origin + '/examples/multi-page-b.html',
+          type: 'pin',
+          author: 'Reviewer B',
+          text: 'Comment on page B',
+          color: '#0ea5e9',
+          geom: { kind: 'pin', selector: 'body', x: 0.6, y: 0.4 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ] }));
+      window.Annotate.refresh();
+      window.Annotate.open();
+    });
+
+    await expect.poll(() => page.evaluate(() => window.Annotate.comments().map(c => c.id)))
+      .toEqual(['page-a-comment']);
+    await expect(page.locator('.an-pin')).toHaveCount(1);
+    await expect(page.locator('.an-card')).toHaveCount(2);
+    await expect(page.locator('.an-card[data-id="page-a-comment"] .an-pagepath'))
+      .toContainText('Current');
+    await expect(page.locator('.an-card[data-id="page-b-comment"] .an-pagepath'))
+      .toContainText('/examples/multi-page-b.html');
+
+    const pageFilter = page.locator('.an-pagefilter');
+    await expect(pageFilter).toBeVisible();
+    await expect(pageFilter.locator('option')).toContainText([
+      'All pages (2)',
+      'Current page (1)',
+      '/examples/multi-page-a.html (1)',
+      '/examples/multi-page-b.html (1)',
+    ]);
+
+    await pageFilter.selectOption('__current__');
+    await expect(page.locator('.an-card')).toHaveCount(1);
+    await expect(page.locator('.an-card')).toHaveAttribute('data-id', 'page-a-comment');
+
+    await pageFilter.selectOption('multi-page-test:/examples/multi-page-b.html');
+    await expect(page.locator('.an-card')).toHaveCount(1);
+    await expect(page.locator('.an-card')).toHaveAttribute('data-id', 'page-b-comment');
+    await expect(page.locator('.an-pin')).toHaveCount(1);
+  });
+
+  test('off-page actions update storage without leaking markers onto the current page', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    await page.evaluate(() => {
+      const now = new Date().toISOString();
+      const origin = location.origin;
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({ comments: [
+        {
+          id: 'local-comment',
+          page: 'multi-page-test:/examples/multi-page-a.html',
+          url: origin + '/examples/multi-page-a.html',
+          type: 'pin',
+          author: 'Local',
+          text: 'Local comment',
+          color: '#f59e0b',
+          geom: { kind: 'pin', selector: 'body', x: 0.3, y: 0.3 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'remote-comment',
+          page: 'multi-page-test:/examples/multi-page-b.html',
+          url: origin + '/examples/multi-page-b.html',
+          type: 'pin',
+          author: 'Remote',
+          text: 'Remote comment',
+          color: '#8b5cf6',
+          geom: { kind: 'pin', selector: 'body', x: 0.5, y: 0.5 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ] }));
+      window.Annotate.refresh();
+      window.Annotate.open();
+    });
+
+    await page.locator('.an-pagefilter').selectOption('multi-page-test:/examples/multi-page-b.html');
+    const remote = page.locator('.an-card[data-id="remote-comment"]');
+    await remote.locator('.an-mini', { hasText: 'Resolve' }).click();
+
+    await expect.poll(() => page.evaluate(() => {
+      const stored = JSON.parse(localStorage.getItem('annotate:multi-page-test') || '{"comments":[]}');
+      return stored.comments.find(c => c.id === 'remote-comment').resolved;
+    })).toBe(true);
+
+    expect(await page.evaluate(() => window.Annotate.comments().map(c => c.id))).toEqual(['local-comment']);
+    await expect(page.locator('.an-pin')).toHaveCount(1);
+  });
+
+  test('clicking an off-page list comment opens its source page and focuses it', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    await page.evaluate(() => {
+      const now = new Date().toISOString();
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({ comments: [{
+        id: 'remote-focus',
+        page: 'multi-page-test:/examples/multi-page-b.html',
+        url: location.origin + '/examples/multi-page-b.html',
+        type: 'pin',
+        author: 'Remote',
+        text: 'Open page B',
+        color: '#10b981',
+        geom: { kind: 'pin', selector: 'body', x: 0.5, y: 0.5 },
+        resolved: false,
+        replies: [],
+        createdAt: now,
+        updatedAt: now,
+      }] }));
+      window.Annotate.refresh();
+      window.Annotate.open();
+    });
+
+    await expect(page.locator('.an-card[data-id="remote-focus"]')).toBeVisible();
+    await page.locator('.an-card[data-id="remote-focus"]').click();
+
+    await expect.poll(() => page.evaluate(() => location.pathname))
+      .toBe('/examples/multi-page-b.html');
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe('#an=remote-focus');
+    await expect(page.locator('.an-card.an-active')).toHaveAttribute('data-id', 'remote-focus');
+  });
+});
+
+// ============================================================
 // ANCHOR DEEP-LINK
 // ============================================================
 test.describe('Deep linking', () => {

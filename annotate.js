@@ -99,6 +99,7 @@
     panelOpen: false,
     activeId: null,
     filter: "open", // open | resolved | all
+    pageFilter: "__all__", // __all__ | __current__ | exact page key
     query: "",
     enabled: store.get("an-off") !== "1", // master on/off
   };
@@ -443,7 +444,12 @@
     background: var(--an-surface-2); border-radius:10px; padding:8px 10px 8px 31px;
     font:13px var(--an-font); outline:none; color: var(--an-fg); transition:border-color .15s; }
   .an-search input:focus { border-color: var(--an-border-strong); }
-  .an-filters { display:flex; gap:6px; }
+  .an-filterrow { display:flex; gap:8px; align-items:center; }
+  .an-filters { display:flex; gap:6px; flex:none; }
+  .an-pagefilter { min-width:0; flex:1; border:1px solid var(--an-border);
+    background:var(--an-surface); color:var(--an-fg); border-radius:9px;
+    padding:5px 28px 5px 9px; font:500 12px var(--an-font); outline:none; }
+  .an-pagefilter:focus { border-color:var(--an-border-strong); }
   .an-chip { padding:4px 11px; border-radius:20px; border:1px solid var(--an-border);
     background: var(--an-surface); cursor:pointer; color: var(--an-muted);
     font:500 12px var(--an-font); transition: all .15s; }
@@ -483,6 +489,9 @@
     border-left:3px solid var(--an-border-strong);
     padding:5px 9px; border-radius:0 6px 6px 0; margin:6px 0; line-height:1.45;
     max-height:54px; overflow:hidden; }
+  .an-pagepath { margin:-1px 0 7px 30px; color:var(--an-muted); font:500 10.5px var(--an-font);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .an-pagepath.an-current { color:var(--an-fg); }
   .an-body { font-size:13.5px; line-height:1.5; color: var(--an-fg);
     white-space:pre-wrap; word-break:break-word; }
   .an-replies { margin-top:9px; border-top:1px dashed var(--an-border); padding-top:8px;
@@ -1367,7 +1376,7 @@
   // ==========================================================================
   // TOOLBAR + PANEL UI
   // ==========================================================================
-  var bar, panel, listEl, footEl, countBadge, hintEl, launchEl, helpEl, noteEl;
+  var bar, panel, listEl, footEl, countBadge, hintEl, launchEl, helpEl, noteEl, pageFilterEl;
   var SIDE = CFG.position === "bottom-left" ? "an-left" : "an-right";
   function buildUI() {
     var style = el("style", { html: CSS_TEXT });
@@ -1486,7 +1495,13 @@
       });
       filters.appendChild(ch);
     });
-    var toolsRow = el("div", { class: "an-toolsrow" }, [search, filters]);
+    pageFilterEl = el("select", { class: "an-pagefilter", "aria-label": "Filter comments by page", title: "Filter comments by page" });
+    pageFilterEl.addEventListener("change", function () {
+      state.pageFilter = pageFilterEl.value;
+      renderPanel();
+    });
+    var filterRow = el("div", { class: "an-filterrow" }, [filters, pageFilterEl]);
+    var toolsRow = el("div", { class: "an-toolsrow" }, [search, filterRow]);
     noteEl = el("div", { id: "__an_note" });
     listEl = el("div", { class: "an-list", id: "__an_list" });
     footEl = el("div", { id: "__an_foot" });
@@ -1675,7 +1690,7 @@
       if (pinLayer) pinLayer.style.display = "none";
       if (root) root.style.display = "none";
       if (launchEl) {
-        var n = state.comments.filter(function (c) { return !c.resolved; }).length;
+        var n = panelComments().filter(function (c) { return !c.resolved; }).length;
         launchEl.querySelector("span").textContent = n ? "Review (" + n + ")" : "Review";
         launchEl.classList.add("an-show");
       }
@@ -1744,20 +1759,67 @@
     }, { passive: true });
   }
 
+  function panelComments() {
+    return dbRead().comments.filter(function (c) { return !pendingDeletes[c.id]; });
+  }
+  function commentPageLabel(c) {
+    try {
+      var target = new URL(c && c.url ? c.url : "", location.href);
+      if (target.origin === location.origin) return target.pathname + target.search;
+    } catch (e) {}
+    var page = c && c.page ? String(c.page) : "";
+    if (CFG.project && page.indexOf(CFG.project + ":") === 0)
+      page = page.slice(CFG.project.length + 1);
+    else {
+      var m = page.match(/^[^:]+:(\/.*)$/);
+      if (m) page = m[1];
+    }
+    return page || "Unknown page";
+  }
+  function renderPageFilterOptions(all) {
+    if (!pageFilterEl) return;
+    var current = currentPageKey();
+    var pages = {};
+    all.forEach(function (c) {
+      var key = c.page || current;
+      if (!pages[key]) pages[key] = { count: 0, label: commentPageLabel(c) };
+      pages[key].count++;
+    });
+    var selected = state.pageFilter;
+    pageFilterEl.innerHTML = "";
+    pageFilterEl.appendChild(el("option", { value: "__all__", text: "All pages (" + all.length + ")" }));
+    var currentCount = pages[current] ? pages[current].count : 0;
+    pageFilterEl.appendChild(el("option", { value: "__current__", text: "Current page (" + currentCount + ")" }));
+    Object.keys(pages).sort(function (a, b) {
+      return pages[a].label.localeCompare(pages[b].label);
+    }).forEach(function (key) {
+      pageFilterEl.appendChild(el("option", {
+        value: key,
+        text: pages[key].label + " (" + pages[key].count + ")"
+      }));
+    });
+    var valid = selected === "__all__" || selected === "__current__" || !!pages[selected];
+    if (!valid) selected = state.pageFilter = "__all__";
+    pageFilterEl.value = selected;
+  }
   function updateCount() {
-    var n = state.comments.filter(function (c) { return !c.resolved; }).length;
+    var all = panelComments();
+    var n = all.filter(function (c) { return !c.resolved; }).length;
     if (countBadge) { countBadge.textContent = n; countBadge.style.display = n ? "flex" : "none"; }
     var sub = document.getElementById("__an_sub");
-    if (sub) sub.textContent = String(state.comments.length);
+    if (sub) sub.textContent = String(all.length);
   }
 
   var TYPE_LABEL = { highlight: "Highlight", shape: "Shape", pin: "Pin", pen: "Sketch", note: "Note", block: "Section" };
-  function visibleComments() {
-    return state.comments.filter(function (c) {
+  function visibleComments(all) {
+    var current = currentPageKey();
+    return all.filter(function (c) {
+      if (state.pageFilter === "__current__" && c.page !== current) return false;
+      if (state.pageFilter !== "__all__" && state.pageFilter !== "__current__" && c.page !== state.pageFilter) return false;
       if (state.filter === "open" && c.resolved) return false;
       if (state.filter === "resolved" && !c.resolved) return false;
       if (state.query) {
-        var hay = ((c.text || "") + " " + (c.author || "") + " " +
+        var hay = ((c.text || "") + " " + (c.author || "") + " " + commentPageLabel(c) + " " +
           (c.anchor && c.anchor.exact ? c.anchor.exact : "") + " " +
           (c.replies || []).map(function (r) { return r.text + " " + r.author; }).join(" ")
         ).toLowerCase();
@@ -1769,13 +1831,17 @@
   function renderPanel() {
     if (!listEl) return;
     listEl.innerHTML = "";
-    var list = visibleComments();
+    var all = panelComments();
+    renderPageFilterOptions(all);
+    var list = visibleComments(all);
     if (!list.length) {
       var msg = state.query
         ? "No comments match “" + esc(state.query) + "”."
-        : state.filter === "resolved"
-          ? "Nothing resolved yet."
-          : "No comments yet.<br>Select any text, or pick a tool from the toolbar — try <kbd>H</kbd> highlight or <kbd>P</kbd> pin.";
+        : state.pageFilter !== "__all__"
+          ? "No comments match this page filter."
+          : state.filter === "resolved"
+            ? "Nothing resolved yet."
+            : "No comments yet.<br>Select any text, or pick a tool from the toolbar — try <kbd>H</kbd> highlight or <kbd>P</kbd> pin.";
       listEl.appendChild(el("div", { class: "an-empty" }, [
         el("div", { class: "an-eicon", html: ICONS.bubble }),
         el("div", { html: msg }),
@@ -1785,7 +1851,7 @@
       return;
     }
     list.forEach(function (c) {
-      var idx = state.comments.indexOf(c) + 1;
+      var idx = all.indexOf(c) + 1;
       var card = el("div", { class: "an-card" + (c.id === state.activeId ? " an-active" : "") + (c.resolved ? " an-resolved" : ""), "data-id": c.id });
       var meta = el("div", { class: "an-cmeta" }, [
         avatarEl(c.author),
@@ -1798,6 +1864,12 @@
         el("span", { class: "an-when", text: fmtTime(c.createdAt) }),
       ]);
       card.appendChild(meta);
+      var pagePath = el("div", {
+        class: "an-pagepath" + (c.page === currentPageKey() ? " an-current" : ""),
+        text: (c.page === currentPageKey() ? "Current · " : "") + commentPageLabel(c),
+        title: commentPageLabel(c)
+      });
+      card.appendChild(pagePath);
       if (c.type === "highlight" && c.anchor && c.anchor.exact)
         card.appendChild(el("div", { class: "an-quote", text: '“' + c.anchor.exact + '”' }));
       var bodyEl = el("div", { class: "an-body", text: c.text || "" });
@@ -2056,7 +2128,9 @@
   }
 
   function copyLink(id) {
-    var link = location.origin + location.pathname + location.search + "#an=" + id;
+    var c = dbRead().comments.find(function (x) { return x.id === id; });
+    var source = commentSourceUrl(c);
+    var link = source ? source.href : location.origin + location.pathname + location.search + "#an=" + id;
     function ok() { toast("Link copied to clipboard", { kind: "success" }); }
     if (navigator.clipboard && navigator.clipboard.writeText)
       navigator.clipboard.writeText(link).then(ok, function () { prompt("Copy link:", link); });
@@ -2074,19 +2148,13 @@
       kind: "info", action: "Undo", duration: 5000,
       onAction: function () {
         delete pendingDeletes[c.id];
-        // Re-insert in chronological order so concurrent deletes don't break positions
-        var inserted = false;
-        for (var i = 0; i < state.comments.length; i++) {
-          if (state.comments[i].createdAt > c.createdAt) {
-            state.comments.splice(i, 0, c); inserted = true; break;
-          }
-        }
-        if (!inserted) state.comments.push(c);
-        renderAll(); renderPanel();
+        load();
       },
       onExpire: function () {
         delete pendingDeletes[c.id];
         removeComment(c.id);
+        renderPanel();
+        updateCount();
       },
     });
   }
@@ -2254,6 +2322,10 @@
 
   function mergeComment(updated) {
     var i = state.comments.findIndex(function (x) { return x.id === updated.id; });
+    if (updated.page !== currentPageKey()) {
+      if (i >= 0) state.comments.splice(i, 1);
+      return;
+    }
     if (i >= 0) state.comments[i] = updated; else state.comments.push(updated);
   }
 
@@ -2270,7 +2342,8 @@
   }
 
   function focusComment(id, scrollToContent) {
-    var c = state.comments.find(function (x) { return x.id === id; });
+    var c = state.comments.find(function (x) { return x.id === id; }) ||
+      dbRead().comments.find(function (x) { return x.id === id; });
     if (!c) return;
 
     var source = commentSourceUrl(c);

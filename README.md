@@ -43,9 +43,10 @@ That single line is the whole installation.
 | 〰️ **Freehand** | Sketch directly on the page |
 | ➕ **Section note** | Hover any paragraph/heading for a margin comment button |
 
-Plus: threaded replies, resolve/reopen, search & filter, deep-links to a single
-comment (`#an=<id>`), an "off" mode that collapses to a small launcher, and a
-**Download / Copy / Import** round-trip for sharing.
+Plus: threaded replies, resolve/reopen, search & filter, a **domain-wide review
+list with page filtering**, deep-links to a single comment (`#an=<id>`), an
+"off" mode that collapses to a small launcher, and a **Download / Copy / Import**
+round-trip for sharing.
 
 ---
 
@@ -287,6 +288,9 @@ Paste before `</body>` (or into the platform's "custom code / footer" field):
 Because everything is local, sharing is an explicit, privacy-friendly action:
 
 1. A reviewer opens the **Comments panel** (toolbar list icon or press `A`).
+   The panel shows comments from all pages in the current domain/project by
+   default. Use the page selector to switch between **All pages**, **Current
+   page**, or any individual page discovered in the stored review.
 2. They click **Download** (⬇), enter the name to attach to the export, and save
    a `annotate-<domain-or-project>-<date>.json` file.
 3. The download contains **all comments stored for the current domain/project**,
@@ -323,7 +327,7 @@ Annotate.toggle();
 Annotate.enable();            // show the review layer
 Annotate.disable();           // collapse to the launcher
 Annotate.setTool("highlight");// show the layer, then choose cursor | highlight | rect | circle | pen | pin
-Annotate.comments();          // → array of comment objects for this page
+Annotate.comments();          // → page-scoped comments currently rendered on this page
 Annotate.focus(id);           // scroll to & highlight a comment
 Annotate.export();            // download all comments for this domain/project
 Annotate.import();            // open the file picker
