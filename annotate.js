@@ -1905,8 +1905,9 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
-  function buildExportPayload(exporter) {
-    var comments = state.comments.map(function (c) {
+  function buildExportPayload(exporter, scope) {
+    var source = scope === "domain" ? dbRead().comments : state.comments;
+    var comments = source.map(function (c) {
       var copy = JSON.parse(JSON.stringify(c));
       if (exporter) copy.author = exporter;
       return copy;
@@ -1922,6 +1923,13 @@
       exportedViewport: { vw: window.innerWidth, vh: window.innerHeight, dpr: window.devicePixelRatio || 1 },
       comments: comments,
     };
+    // New multi-page downloads are explicitly marked so import can preserve
+    // each comment's original page. Payloads without this field remain legacy
+    // page exports and keep the existing import behavior.
+    if (scope === "domain") {
+      payload.scope = "domain";
+      payload.origin = location.origin;
+    }
     if (exporter) payload.exportedBy = exporter;
     return payload;
   }
@@ -1938,18 +1946,19 @@
   }
 
   function exportComments() {
-    if (!state.comments.length) {
-      toast("No comments on this page to export", { kind: "info" });
+    var payload = buildExportPayload(null, "domain");
+    if (!payload) {
+      toast("No comments on this domain to export", { kind: "info" });
       return;
     }
     var username = requestExportUsername();
     if (!username) return;
-    var payload = buildExportPayload(username);
+    payload = buildExportPayload(username, "domain");
     var comments = payload.comments;
-    var slug = (currentPageKey() || "page").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "page";
+    var slug = (CFG.project || location.host || "domain").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "domain";
     var stamp = new Date().toISOString().slice(0, 10);
     downloadJSON(payload, "annotate-" + slug + "-" + stamp + ".json");
-    toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s") + " as " + username, { kind: "success" });
+    toast("Exported " + comments.length + " comment" + (comments.length === 1 ? "" : "s") + " from this domain as " + username, { kind: "success" });
   }
 
   function copyComments() {
@@ -1995,24 +2004,28 @@
   function importComments(data) {
     var incoming = data && Array.isArray(data.comments) ? data.comments : null;
     if (!incoming) { toast("No comments found in that file", { kind: "error" }); return; }
-    // Warn if the export came from a different page
-    if (data.page && data.page !== currentPageKey())
+    var preservePages = data.scope === "domain";
+    // Legacy exports are page-scoped. Keep their historical behavior: import
+    // every comment onto the page where the file is imported.
+    if (!preservePages && data.page && data.page !== currentPageKey())
       toast("These comments were from a different page — positions may not match.", { kind: "info", duration: 6000 });
+    var d = dbRead();
     var existing = {};
-    state.comments.forEach(function (c) { existing[c.id] = true; });
+    d.comments.forEach(function (c) { existing[c.id] = true; });
     var prepared = [];
     incoming.forEach(function (c) {
       if (!c || (!c.text && !c.anchor && !c.geom)) return;
       if (c.geom && !isValidGeom(c.geom)) return;  // reject malformed geometry
       if (c.anchor && c.anchor.exact && String(c.anchor.exact).length > 10000) return;
       var copy = JSON.parse(JSON.stringify(c));
-      copy.page = currentPageKey();
+      if (!preservePages || typeof copy.page !== "string" || !copy.page)
+        copy.page = currentPageKey();
       if (!copy.id || existing[copy.id]) copy.id = uid();
+      existing[copy.id] = true;
       if (!Array.isArray(copy.replies)) copy.replies = [];
       prepared.push(copy);
     });
     if (!prepared.length) { toast("Nothing new to import", { kind: "info" }); return; }
-    var d = dbRead();
     d.comments = d.comments.concat(prepared);
     dbWrite(d);
     load();
