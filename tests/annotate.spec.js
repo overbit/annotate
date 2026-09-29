@@ -1209,6 +1209,135 @@ test.describe('Domain-wide review list', () => {
 });
 
 // ============================================================
+// DUPLICATE CLEANUP
+// ============================================================
+test.describe('Duplicate cleanup', () => {
+  test('clears exact duplicates across pages and keeps the first copy', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    await page.evaluate(() => {
+      const createdAt = '2026-09-29T08:00:00.000Z';
+      const updatedAt = '2026-09-29T08:05:00.000Z';
+      const base = {
+        page: 'multi-page-test:/examples/multi-page-b.html',
+        url: location.origin + '/examples/multi-page-b.html',
+        type: 'pin',
+        author: 'Duplicate Reviewer',
+        text: 'Exact duplicate comment',
+        color: '#f59e0b',
+        geom: { selector: 'body', y: 0.4, x: 0.5, kind: 'pin' },
+        resolved: false,
+        replies: [{
+          id: 'reply-1',
+          author: 'Someone',
+          text: 'Same reply',
+          createdAt,
+        }],
+        createdAt,
+        updatedAt,
+      };
+      const first = { id: 'keep-first', ...base };
+      // Build the second object in a different property order to prove
+      // equality is structural rather than dependent on JSON key order.
+      const second = {
+        id: 'remove-second',
+        updatedAt,
+        createdAt,
+        replies: base.replies,
+        resolved: false,
+        geom: { kind: 'pin', x: 0.5, y: 0.4, selector: 'body' },
+        color: '#f59e0b',
+        text: 'Exact duplicate comment',
+        author: 'Duplicate Reviewer',
+        type: 'pin',
+        url: base.url,
+        page: base.page,
+      };
+      const differentAuthor = { id: 'keep-author', ...base, author: 'Another Reviewer' };
+      const differentText = { id: 'keep-text', ...base, text: 'Different text' };
+      const differentTime = { id: 'keep-time', ...base, updatedAt: '2026-09-29T08:06:00.000Z' };
+
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({
+        comments: [first, second, differentAuthor, differentText, differentTime],
+      }));
+      window.Annotate.refresh();
+      window.Annotate.open();
+    });
+
+    const button = page.locator('[data-action="clear-duplicates"]');
+    await expect(button).toBeVisible();
+    await expect(button).toContainText('Clear duplicates (1)');
+    await expect(page.locator('.an-card')).toHaveCount(5);
+
+    page.once('dialog', dialog => dialog.accept());
+    await button.click();
+
+    await expect(page.locator('[data-action="clear-duplicates"]')).toHaveCount(0);
+    await expect(page.locator('.an-card')).toHaveCount(4);
+
+    const stored = await page.evaluate(() => {
+      const db = JSON.parse(localStorage.getItem('annotate:multi-page-test') || '{"comments":[]}');
+      return db.comments.map(comment => ({
+        id: comment.id,
+        author: comment.author,
+        text: comment.text,
+        updatedAt: comment.updatedAt,
+      }));
+    });
+
+    expect(stored.map(comment => comment.id)).toEqual([
+      'keep-first',
+      'keep-author',
+      'keep-text',
+      'keep-time',
+    ]);
+  });
+
+  test('does not offer cleanup for comments that differ by any field other than id', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    await page.evaluate(() => {
+      const now = '2026-09-29T08:00:00.000Z';
+      const common = {
+        page: 'multi-page-test:/examples/multi-page-a.html',
+        url: location.origin + '/examples/multi-page-a.html',
+        type: 'pin',
+        author: 'Reviewer',
+        color: '#0ea5e9',
+        geom: { kind: 'pin', selector: 'body', x: 0.2, y: 0.2 },
+        resolved: false,
+        replies: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({ comments: [
+        { id: 'one', ...common, text: 'Same-looking comment' },
+        { id: 'two', ...common, text: 'Same-looking comment', resolved: true },
+        { id: 'three', ...common, text: 'Same-looking comment', author: 'Other' },
+        { id: 'four', ...common, text: 'Same-looking comment', page: 'multi-page-test:/examples/multi-page-b.html' },
+      ] }));
+      window.Annotate.refresh();
+      window.Annotate.open();
+    });
+
+    await expect(page.locator('[data-action="clear-duplicates"]')).toHaveCount(0);
+    expect(await page.evaluate(() => window.Annotate.clearDuplicates())).toBe(0);
+
+    const count = await page.evaluate(() => {
+      const db = JSON.parse(localStorage.getItem('annotate:multi-page-test') || '{"comments":[]}');
+      return db.comments.length;
+    });
+    expect(count).toBe(4);
+  });
+});
+
+// ============================================================
 // ANCHOR DEEP-LINK
 // ============================================================
 test.describe('Deep linking', () => {
