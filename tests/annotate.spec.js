@@ -628,6 +628,7 @@ test.describe('Export / Import', () => {
 
   test('legacy page export still imports onto the current page', async ({ page }) => {
     const currentPage = await page.evaluate(() => window.Annotate.comments()[0].page);
+    const origin = await page.evaluate(() => location.origin);
     const payload = {
       annotate: '1.2.0',
       kind: 'annotate-export',
@@ -635,7 +636,7 @@ test.describe('Export / Import', () => {
       comments: [{
         id: 'legacy-import',
         page: 'annotate-demo:/legacy-source',
-        url: location.origin + '/legacy-source',
+        url: origin + '/legacy-source',
         type: 'pin',
         author: 'Legacy Reviewer',
         text: 'Legacy page import',
