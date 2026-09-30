@@ -1209,6 +1209,156 @@ test.describe('Domain-wide review list', () => {
 });
 
 // ============================================================
+// REVIEW VISIBILITY
+// ============================================================
+test.describe('Review visibility controls', () => {
+  test('can start with page comments hidden while keeping the review list available', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+
+    await page.evaluate(() => {
+      const now = new Date().toISOString();
+      localStorage.setItem('annotate:multi-page-test', JSON.stringify({ comments: [{
+        id: 'hidden-default-comment',
+        page: 'multi-page-test:/examples/multi-page-a.html',
+        url: location.origin + '/examples/multi-page-a.html',
+        type: 'pin',
+        author: 'Visibility Reviewer',
+        text: 'Hidden on the page by default',
+        color: '#f59e0b',
+        geom: { kind: 'pin', selector: 'body', x: 0.4, y: 0.4 },
+        resolved: false,
+        replies: [],
+        createdAt: now,
+        updatedAt: now,
+      }] }));
+    });
+    await page.addInitScript(() => {
+      window.AnnotateConfig = { commentsVisible: false };
+    });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    expect(await page.evaluate(() => window.Annotate.config.commentsVisible)).toBe(false);
+    expect(await page.evaluate(() => window.Annotate.commentsVisible())).toBe(false);
+    expect(await page.evaluate(() => window.Annotate.comments().length)).toBe(1);
+    await expect(page.locator('.an-pin')).toHaveCount(0);
+
+    await page.evaluate(() => window.Annotate.open());
+    await expect(page.locator('.an-card[data-id="hidden-default-comment"]')).toBeVisible();
+
+    const toggle = page.locator('[data-action="toggle-comments"]');
+    await expect(toggle).toHaveAttribute('aria-label', 'Show comments on page');
+    await toggle.click();
+
+    expect(await page.evaluate(() => window.Annotate.commentsVisible())).toBe(true);
+    await expect(page.locator('.an-pin')).toHaveCount(1);
+    await expect(toggle).toHaveAttribute('aria-label', 'Hide comments on page');
+    expect(await page.evaluate(() => localStorage.getItem('an-comments-visible'))).toBe('1');
+  });
+
+  test('user page-visibility preference persists and overrides the configured default', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+    await page.addInitScript(() => {
+      window.AnnotateConfig = { commentsVisible: false };
+    });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    expect(await page.evaluate(() => window.Annotate.commentsVisible())).toBe(false);
+    expect(await page.evaluate(() => window.Annotate.setCommentsVisible(true))).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem('an-comments-visible'))).toBe('1');
+
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    expect(await page.evaluate(() => window.Annotate.config.commentsVisible)).toBe(false);
+    expect(await page.evaluate(() => window.Annotate.commentsVisible())).toBe(true);
+
+    expect(await page.evaluate(() => window.Annotate.setCommentsVisible(false))).toBe(false);
+    expect(await page.evaluate(() => localStorage.getItem('an-comments-visible'))).toBe('0');
+  });
+
+  test('global review disable mounts no UI and never mutates stored review data', async ({ page }) => {
+    await page.goto('/examples/multi-page-a.html');
+    await clearStorage(page);
+
+    const rawStore = await page.evaluate(() => {
+      const now = '2026-09-30T12:00:00.000Z';
+      const raw = JSON.stringify({ comments: [
+        {
+          id: 'disabled-one',
+          page: 'multi-page-test:/stale-page',
+          url: location.origin + '/examples/multi-page-a.html',
+          type: 'pin',
+          author: 'Disabled Reviewer',
+          text: 'Stored data must remain untouched',
+          color: '#f59e0b',
+          geom: { kind: 'pin', selector: 'body', x: 0.2, y: 0.2 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'disabled-two',
+          page: 'multi-page-test:/stale-page',
+          url: location.origin + '/examples/multi-page-a.html',
+          type: 'pin',
+          author: 'Disabled Reviewer',
+          text: 'Stored data must remain untouched',
+          color: '#f59e0b',
+          geom: { kind: 'pin', selector: 'body', x: 0.2, y: 0.2 },
+          resolved: false,
+          replies: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ] });
+      localStorage.setItem('annotate:multi-page-test', raw);
+      return raw;
+    });
+
+    await page.addInitScript(() => {
+      window.AnnotateConfig = { reviewDisabled: true };
+    });
+    await page.reload();
+    await page.waitForFunction(() => !!window.Annotate);
+
+    expect(await page.evaluate(() => window.Annotate.config.reviewDisabled)).toBe(true);
+    await expect(page.locator('#__an_root')).toHaveCount(0);
+    await expect(page.locator('#__an_launch')).toHaveCount(0);
+    await expect(page.locator('#__an_overlay')).toHaveCount(0);
+    expect(await page.evaluate(() => window.Annotate.comments())).toEqual([]);
+
+    const before = await page.evaluate(() => localStorage.getItem('annotate:multi-page-test'));
+    expect(before).toBe(rawStore);
+
+    const results = await page.evaluate(() => ({
+      clearDuplicates: window.Annotate.clearDuplicates(),
+      clear: window.Annotate.clear(),
+      visible: window.Annotate.setCommentsVisible(true),
+    }));
+    expect(results).toEqual({ clearDuplicates: 0, clear: 0, visible: false });
+
+    await page.evaluate(() => {
+      window.Annotate.enable();
+      window.Annotate.open();
+      window.Annotate.refresh();
+      window.Annotate.import();
+      window.Annotate.export();
+    });
+    await expect(page.locator('#__an_root')).toHaveCount(0);
+
+    const after = await page.evaluate(() => localStorage.getItem('annotate:multi-page-test'));
+    expect(after).toBe(rawStore);
+    expect(await page.evaluate(() => localStorage.getItem('an-off'))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('an-comments-visible'))).toBeNull();
+  });
+});
+
+// ============================================================
 // DUPLICATE CLEANUP
 // ============================================================
 test.describe('Duplicate cleanup', () => {
