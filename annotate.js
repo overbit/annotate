@@ -510,6 +510,29 @@
     background:var(--an-surface); color:var(--an-fg); border-radius:9px;
     padding:5px 28px 5px 9px; font:500 12px var(--an-font); outline:none; }
   .an-pagefilter:focus { border-color:var(--an-border-strong); }
+  .an-viscontrol { width:100%; display:flex; align-items:center; gap:9px;
+    border:1px solid var(--an-border); background:var(--an-surface);
+    border-radius:10px; padding:7px 9px; color:var(--an-fg); cursor:pointer;
+    text-align:left; transition:border-color .15s, background .15s; }
+  .an-viscontrol:hover { border-color:var(--an-border-strong); background:var(--an-surface-2); }
+  .an-viscontrol:focus-visible { outline:none; box-shadow:var(--an-ring); }
+  .an-visicon { width:26px; height:26px; border-radius:8px; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--an-surface-2); color:var(--an-muted); }
+  .an-visicon svg { width:14px; height:14px; }
+  .an-vistext { min-width:0; flex:1; display:flex; flex-direction:column; gap:1px; }
+  .an-vislabel { font:600 12px var(--an-font); color:var(--an-fg); }
+  .an-vishint { font:400 10.5px var(--an-font); color:var(--an-muted);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .an-switch { width:32px; height:18px; padding:2px; border-radius:999px; flex:none;
+    display:flex; align-items:center; background:var(--an-border-strong);
+    transition:background .15s; }
+  .an-switchknob { width:14px; height:14px; border-radius:50%;
+    background:var(--an-surface); box-shadow:0 1px 3px rgba(0,0,0,.22);
+    transform:translateX(0); transition:transform .15s; }
+  .an-viscontrol.an-on .an-switch { background:var(--an-btn-bg); }
+  .an-viscontrol.an-on .an-switchknob { transform:translateX(14px); }
+  .an-viscontrol.an-on .an-visicon { color:var(--an-fg); }
   .an-chip { padding:4px 11px; border-radius:20px; border:1px solid var(--an-border);
     background: var(--an-surface); cursor:pointer; color: var(--an-muted);
     font:500 12px var(--an-font); transition: all .15s; }
@@ -1048,12 +1071,15 @@
 
   function updateCommentsVisibilityButton() {
     if (!commentsVisibilityBtn) return;
-    var label = state.commentsVisible ? "Hide comments on page" : "Show comments on page";
-    commentsVisibilityBtn.innerHTML = state.commentsVisible ? ICONS.hide : ICONS.show;
-    commentsVisibilityBtn.setAttribute("data-tip", label);
-    commentsVisibilityBtn.setAttribute("title", label);
-    commentsVisibilityBtn.setAttribute("aria-label", label);
-    commentsVisibilityBtn.classList.toggle("an-on", !state.commentsVisible);
+    var actionLabel = state.commentsVisible ? "Hide comments on page" : "Show comments on page";
+    commentsVisibilityBtn.setAttribute("title", actionLabel);
+    commentsVisibilityBtn.setAttribute("aria-label", actionLabel);
+    commentsVisibilityBtn.setAttribute("aria-pressed", state.commentsVisible ? "true" : "false");
+    commentsVisibilityBtn.classList.toggle("an-on", state.commentsVisible);
+    var hint = commentsVisibilityBtn.querySelector(".an-vishint");
+    if (hint) hint.textContent = state.commentsVisible
+      ? "Pins, highlights and drawings are visible"
+      : "Pins, highlights and drawings are hidden";
   }
   function setCommentsVisible(on, persist) {
     if (CFG.reviewDisabled) return false;
@@ -1532,17 +1558,6 @@
     listBtn.addEventListener("click", togglePanel);
     bar.appendChild(listBtn);
 
-    commentsVisibilityBtn = el("button", {
-      class: "an-btn",
-      "data-action": "toggle-comments",
-      "aria-label": state.commentsVisible ? "Hide comments on page" : "Show comments on page"
-    });
-    commentsVisibilityBtn.addEventListener("click", function () {
-      setCommentsVisible(!state.commentsVisible, true);
-    });
-    bar.appendChild(commentsVisibilityBtn);
-    updateCommentsVisibilityButton();
-
     var offBtn = el("button", { class: "an-btn", "data-tip": "Hide review tools  ·  O", title: "Hide review tools  ·  O", "aria-label": "Hide review tools", html: ICONS.hide });
     offBtn.addEventListener("click", function () { setEnabled(false); });
     bar.appendChild(offBtn);
@@ -1605,7 +1620,29 @@
       renderPanel();
     });
     var filterRow = el("div", { class: "an-filterrow" }, [filters, pageFilterEl]);
-    var toolsRow = el("div", { class: "an-toolsrow" }, [search, filterRow]);
+
+    commentsVisibilityBtn = el("button", {
+      class: "an-viscontrol",
+      "data-action": "toggle-comments",
+      type: "button",
+      "aria-label": state.commentsVisible ? "Hide comments on page" : "Show comments on page",
+      "aria-pressed": state.commentsVisible ? "true" : "false"
+    }, [
+      el("span", { class: "an-visicon", html: ICONS.show }),
+      el("span", { class: "an-vistext" }, [
+        el("span", { class: "an-vislabel", text: "Show comments on page" }),
+        el("span", { class: "an-vishint", text: "Pins, highlights and drawings" }),
+      ]),
+      el("span", { class: "an-switch", "aria-hidden": "true" }, [
+        el("span", { class: "an-switchknob" }),
+      ]),
+    ]);
+    commentsVisibilityBtn.addEventListener("click", function () {
+      setCommentsVisible(!state.commentsVisible, true);
+    });
+    updateCommentsVisibilityButton();
+
+    var toolsRow = el("div", { class: "an-toolsrow" }, [search, filterRow, commentsVisibilityBtn]);
     noteEl = el("div", { id: "__an_note" });
     listEl = el("div", { class: "an-list", id: "__an_list" });
     footEl = el("div", { id: "__an_foot" });
