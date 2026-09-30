@@ -117,7 +117,7 @@ Configure with `data-` attributes on the script tag — all optional:
 | `data-position` | `bottom-right` | `bottom-right` or `bottom-left`. |
 | `data-blocks` | sensible default | CSS selector for "section note" (+) targets. |
 | `data-start-open` | `false` | Set to `true` to show the review toolbar immediately instead of the collapsed Review pill. |
-| `data-comments-visible` | `true` | Default visibility of on-page highlights, pins and shapes. Reviewers can override this with the eye button; their choice is saved in localStorage. The review list and stored data remain available when annotations are hidden. |
+| `data-comments-visible` | `true` | Default visibility of on-page highlights, pins and shapes. Reviewers can override this with the labeled **Show comments on page** switch in the Comments panel; their choice is saved in localStorage. The review list and stored data remain available when annotations are hidden. |
 | `data-review-disabled` | `false` | Hard-disable the review UI for this page/site. No review UI is mounted and Annotate does not load, repair, clear, deduplicate, import or export stored comments. Existing localStorage data is left untouched. |
 | `data-note` | — | Author's note to reviewers — what should be reviewed. Shown when they start and atop the comments panel. |
 | `data-share-email` | — | Where reviewers send comments: an email address, or a Slack / Hangout link. Adds a **Share** button. |
@@ -126,9 +126,9 @@ The two visibility controls are independent:
 
 - **`commentsVisible`** controls only the markers/highlights rendered over the
   page. The toolbar, domain-wide review list, import/export, cleanup tools, and
-  stored comments still work. The configured value is a default; once a
-  reviewer uses the eye toggle, that browser preference takes precedence on
-  later loads.
+  stored comments still work. The Comments panel exposes a labeled **Show
+  comments on page** switch with explicit on/off state; once a reviewer changes
+  it, that browser preference takes precedence on later loads.
 - **`reviewDisabled`** is a hard off switch. It mounts no review UI and leaves
   existing review storage untouched. This is useful for production or
   non-review environments where the comments must remain available for a later
