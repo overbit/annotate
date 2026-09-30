@@ -1247,13 +1247,20 @@ test.describe('Review visibility controls', () => {
     await page.evaluate(() => window.Annotate.open());
     await expect(page.locator('.an-card[data-id="hidden-default-comment"]')).toBeVisible();
 
-    const toggle = page.locator('[data-action="toggle-comments"]');
+    await expect(page.locator('#__an_bar [data-action="toggle-comments"]')).toHaveCount(0);
+    const toggle = page.locator('#__an_panel [data-action="toggle-comments"]');
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toContainText('Show comments on page');
     await expect(toggle).toHaveAttribute('aria-label', 'Show comments on page');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(toggle.locator('.an-vishint')).toContainText('hidden');
     await toggle.click();
 
     expect(await page.evaluate(() => window.Annotate.commentsVisible())).toBe(true);
     await expect(page.locator('.an-pin')).toHaveCount(1);
     await expect(toggle).toHaveAttribute('aria-label', 'Hide comments on page');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(toggle.locator('.an-vishint')).toContainText('visible');
     expect(await page.evaluate(() => localStorage.getItem('an-comments-visible'))).toBe('1');
   });
 
