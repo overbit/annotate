@@ -100,6 +100,8 @@ Configure with `data-` attributes on the script tag — all optional:
   data-theme="auto"
   data-position="bottom-right"
   data-start-open="true"
+  data-comments-visible="false"
+  data-review-disabled="false"
   data-note="Focus on the hero copy and pricing — flag anything off-brand."
   data-share-email="reviews@example.com"
   defer
@@ -115,8 +117,22 @@ Configure with `data-` attributes on the script tag — all optional:
 | `data-position` | `bottom-right` | `bottom-right` or `bottom-left`. |
 | `data-blocks` | sensible default | CSS selector for "section note" (+) targets. |
 | `data-start-open` | `false` | Set to `true` to show the review toolbar immediately instead of the collapsed Review pill. |
+| `data-comments-visible` | `true` | Default visibility of on-page highlights, pins and shapes. Reviewers can override this with the eye button; their choice is saved in localStorage. The review list and stored data remain available when annotations are hidden. |
+| `data-review-disabled` | `false` | Hard-disable the review UI for this page/site. No review UI is mounted and Annotate does not load, repair, clear, deduplicate, import or export stored comments. Existing localStorage data is left untouched. |
 | `data-note` | — | Author's note to reviewers — what should be reviewed. Shown when they start and atop the comments panel. |
 | `data-share-email` | — | Where reviewers send comments: an email address, or a Slack / Hangout link. Adds a **Share** button. |
+
+The two visibility controls are independent:
+
+- **`commentsVisible`** controls only the markers/highlights rendered over the
+  page. The toolbar, domain-wide review list, import/export, cleanup tools, and
+  stored comments still work. The configured value is a default; once a
+  reviewer uses the eye toggle, that browser preference takes precedence on
+  later loads.
+- **`reviewDisabled`** is a hard off switch. It mounts no review UI and leaves
+  existing review storage untouched. This is useful for production or
+  non-review environments where the comments must remain available for a later
+  review session without any automatic cleanup or repair.
 
 Prefer JS config? Set `window.AnnotateConfig` **before** the script loads:
 
@@ -126,6 +142,8 @@ Prefer JS config? Set `window.AnnotateConfig` **before** the script loads:
     project: "marketing-site",
     accent: "#6d28d9",
     theme: "auto",
+    commentsVisible: false,
+    reviewDisabled: false,
     note: "Focus on the hero copy and pricing — flag anything off-brand.",
     shareEmail: "reviews@example.com",
   };
@@ -330,7 +348,9 @@ Annotate.toggle();
 Annotate.enable();            // show the review layer
 Annotate.disable();           // collapse to the launcher
 Annotate.setTool("highlight");// show the layer, then choose cursor | highlight | rect | circle | pen | pin
-Annotate.comments();          // → page-scoped comments currently rendered on this page
+Annotate.setCommentsVisible(false); // hide/show on-page annotations and persist the preference
+Annotate.commentsVisible();   // → current on-page annotation visibility
+Annotate.comments();          // → page-scoped comments currently loaded on this page
 Annotate.focus(id);           // scroll to & highlight a comment
 Annotate.export();            // download all comments for this domain/project
 Annotate.import();            // open the file picker
