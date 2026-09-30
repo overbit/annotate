@@ -17,6 +17,8 @@
  *   data-position  "bottom-right" | "bottom-left"  (toolbar corner)
  *   data-blocks    CSS selector for section-comment (+) targets
  *   data-start-open "true" to show the toolbar on initial load
+ *   data-comments-visible "false" to hide page annotations by default
+ *   data-review-disabled "true" to disable the review UI without touching data
  *   data-note      author's note to reviewers — what should be reviewed
  *   data-share-email  where reviewers send comments: an email address, or a
  *                     Slack / Hangout (chat) link
@@ -46,6 +48,13 @@
   var scriptData = (SCRIPT && SCRIPT.dataset) || {};   // data-* attributes
   var globalConfig = window.AnnotateConfig || {};       // window.AnnotateConfig
   var PAGE_OVERRIDE = scriptData.page || globalConfig.page || "";
+  function boolConfig(scriptValue, globalValue, fallback) {
+    var value = scriptValue;
+    if (value == null || value === "") value = globalValue;
+    if (value == null || value === "") return fallback;
+    if (value === false) return false;
+    return truthy(value);
+  }
   var CFG = {
     project: scriptData.project || globalConfig.project || "",
     page: PAGE_OVERRIDE || location.pathname,
@@ -54,6 +63,8 @@
     position: scriptData.position || globalConfig.position || "bottom-right",
     blocks: scriptData.blocks || globalConfig.blocks || "",
     startOpen: truthy(scriptData.startOpen || globalConfig.startOpen),
+    commentsVisible: boolConfig(scriptData.commentsVisible, globalConfig.commentsVisible, true),
+    reviewDisabled: boolConfig(scriptData.reviewDisabled, globalConfig.reviewDisabled, false),
     note: scriptData.note || globalConfig.note || "",
     share: String(scriptData.shareEmail || globalConfig.shareEmail || "").trim(),
   };
@@ -101,7 +112,10 @@
     filter: "open", // open | resolved | all
     pageFilter: "__all__", // __all__ | __current__ | exact page key
     query: "",
-    enabled: store.get("an-off") !== "1", // master on/off
+    commentsVisible: store.get("an-comments-visible") == null
+      ? CFG.commentsVisible
+      : store.get("an-comments-visible") !== "0",
+    enabled: !CFG.reviewDisabled && store.get("an-off") !== "1", // master on/off
   };
 
   // --------------------------------------------------------------------------
@@ -823,6 +837,7 @@
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c2-1 3.5-2.5 5-5 1.5 2 3 2 4 1s1.5-3 3-3 2 1 3 1"/><path d="M15.5 4.5l4 4L9 19l-5 1 1-5z"/></svg>',
     list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
     bubble: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>',
+    show: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     hide: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>',
     link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
@@ -1031,10 +1046,33 @@
 
   function showResolvedVisuals() { return state.filter !== "open"; }
 
+  function updateCommentsVisibilityButton() {
+    if (!commentsVisibilityBtn) return;
+    var label = state.commentsVisible ? "Hide comments on page" : "Show comments on page";
+    commentsVisibilityBtn.innerHTML = state.commentsVisible ? ICONS.hide : ICONS.show;
+    commentsVisibilityBtn.setAttribute("data-tip", label);
+    commentsVisibilityBtn.setAttribute("title", label);
+    commentsVisibilityBtn.setAttribute("aria-label", label);
+    commentsVisibilityBtn.classList.toggle("an-on", !state.commentsVisible);
+  }
+  function setCommentsVisible(on, persist) {
+    if (CFG.reviewDisabled) return false;
+    state.commentsVisible = !!on;
+    if (persist !== false) store.set("an-comments-visible", state.commentsVisible ? "1" : "0");
+    updateCommentsVisibilityButton();
+    renderAll();
+    return state.commentsVisible;
+  }
+
   function renderAll() {
     ensureOverlay();
     clearVisuals();
     sizeOverlay();
+    if (!state.commentsVisible) {
+      updateCount();
+      updateCommentsVisibilityButton();
+      return;
+    }
     state.comments.forEach(function (c) {
       if (c.resolved && !showResolvedVisuals()) return;
       if (c.type === "highlight" && c.anchor) {
@@ -1431,7 +1469,7 @@
   // ==========================================================================
   // TOOLBAR + PANEL UI
   // ==========================================================================
-  var bar, panel, listEl, footEl, countBadge, hintEl, launchEl, helpEl, noteEl, pageFilterEl;
+  var bar, panel, listEl, footEl, countBadge, hintEl, launchEl, helpEl, noteEl, pageFilterEl, commentsVisibilityBtn;
   var SIDE = CFG.position === "bottom-left" ? "an-left" : "an-right";
   function buildUI() {
     var style = el("style", { html: CSS_TEXT });
@@ -1493,6 +1531,17 @@
     listBtn.appendChild(countBadge);
     listBtn.addEventListener("click", togglePanel);
     bar.appendChild(listBtn);
+
+    commentsVisibilityBtn = el("button", {
+      class: "an-btn",
+      "data-action": "toggle-comments",
+      "aria-label": state.commentsVisible ? "Hide comments on page" : "Show comments on page"
+    });
+    commentsVisibilityBtn.addEventListener("click", function () {
+      setCommentsVisible(!state.commentsVisible, true);
+    });
+    bar.appendChild(commentsVisibilityBtn);
+    updateCommentsVisibilityButton();
 
     var offBtn = el("button", { class: "an-btn", "data-tip": "Hide review tools  ·  O", title: "Hide review tools  ·  O", "aria-label": "Hide review tools", html: ICONS.hide });
     offBtn.addEventListener("click", function () { setEnabled(false); });
@@ -1724,6 +1773,7 @@
   }
 
   function setEnabled(on) {
+    if (CFG.reviewDisabled) return false;
     state.enabled = on;
     store.set("an-off", on ? "0" : "1");
     var root = document.getElementById("__an_root");
@@ -2531,6 +2581,10 @@
   }
 
   function boot() {
+    if (CFG.reviewDisabled) {
+      state.enabled = false;
+      return;
+    }
     buildUI();
     ensureOverlay();
     setupBlockPlus();
@@ -2555,28 +2609,37 @@
   window.Annotate = {
     version: VERSION,
     config: CFG,
-    open: function () { ensureEnabled(); openPanel(); },
-    close: function () { closePanel(); },
+    open: function () { if (CFG.reviewDisabled) return; ensureEnabled(); openPanel(); },
+    close: function () { if (CFG.reviewDisabled) return; closePanel(); },
     toggle: function () {
+      if (CFG.reviewDisabled) return;
       if (!state.enabled) { setEnabled(true); openPanel(); }
       else togglePanel();
     },
-    enable: function () { setEnabled(true); },
-    disable: function () { setEnabled(false); },
-    setTool: function (t) { ensureEnabled(); setTool(t); },
-    refresh: function () { load(); },
+    enable: function () { if (!CFG.reviewDisabled) setEnabled(true); },
+    disable: function () { if (!CFG.reviewDisabled) setEnabled(false); },
+    setTool: function (t) { if (CFG.reviewDisabled) return; ensureEnabled(); setTool(t); },
+    setCommentsVisible: function (on) { return setCommentsVisible(on, true); },
+    commentsVisible: function () { return state.commentsVisible; },
+    refresh: function () { if (!CFG.reviewDisabled) load(); },
     comments: function () { return state.comments.slice(); },
-    focus: function (id) { focusComment(id, false); },
-    toast: toast,
-    export: function () { exportComments(); },
-    import: function () { pickImportFile(); },
-    clearDuplicates: function () { return clearDuplicateComments(false); },
+    focus: function (id) { if (!CFG.reviewDisabled) focusComment(id, false); },
+    toast: function (msg, opts) { if (!CFG.reviewDisabled) toast(msg, opts); },
+    export: function () { if (!CFG.reviewDisabled) exportComments(); },
+    import: function () { if (!CFG.reviewDisabled) pickImportFile(); },
+    clearDuplicates: function () {
+      if (CFG.reviewDisabled) return 0;
+      return clearDuplicateComments(false);
+    },
     clear: function () {
+      if (CFG.reviewDisabled) return 0;
       var d = dbRead();
       var pageKey = currentPageKey();
+      var before = d.comments.length;
       d.comments = d.comments.filter(function (c) { return c.page !== pageKey; });
       dbWrite(d);
       load();
+      return before - d.comments.length;
     },
   };
 
